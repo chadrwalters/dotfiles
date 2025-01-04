@@ -1,0 +1,122 @@
+# Development and LLM Guidelines
+
+## Core Development Principles
+
+### 1. Simplicity Over Cleverness
+- Write immediately understandable code
+- If a solution feels complex, it needs simplification
+- Optimize for readability first, performance second
+- Avoid premature optimization
+- Write code for humans first, computers second
+
+### 2. Core Functionality
+- Start with minimum viable solutions
+- Question every feature: "Is this really necessary?"
+- Build incrementally based on actual needs
+- Delete unnecessary code and features
+- Add complexity only when justified by requirements
+
+### 3. Existing Solutions
+- Use standard libraries whenever possible
+- Don't reinvent the wheel
+- Choose well-maintained, popular libraries
+- Keep dependencies minimal but practical
+
+### 4. Function Design
+- Single responsibility per function
+- Keep functions short (under 20 lines)
+- Use descriptive names that indicate purpose
+- Limit parameters (3 or fewer is ideal)
+- Use type hints whenever possible
+
+### 5. Project Structure
+- Keep related code together
+- Use consistent file organization
+- Maintain a flat structure where possible
+- Group by feature rather than type
+- Use consistent indentation (2 or 4 spaces)
+- Add spacing between logical sections
+
+## Code Quality
+
+### Error Handling
+- Handle errors explicitly
+- Validate input data
+- Return meaningful error messages
+- Avoid deep nesting of conditionals
+- Test edge cases
+
+### Documentation
+- Document only what's necessary
+- Focus on explaining the "why"
+- Remove unnecessary docstrings and comments
+- Keep documentation up to date
+
+### Version Control
+- Write clear commit messages
+- Keep commits focused and atomic
+- Reference issues when applicable
+- Follow branch naming conventions
+- Make scripts executable
+
+## Object-Oriented Principles
+
+### Design Patterns
+- Single Responsibility Principle
+- Encapsulation
+- Clear constructor initialization
+- Favor composition over inheritance
+- Make dependencies explicit
+- Use interface contracts
+
+### Anti-Patterns to Avoid
+- God classes doing too much
+- Feature envy
+- Long parameter lists
+- Tight coupling
+- Premature optimization
+
+## Project Management
+
+### Plan Management
+- Track progress status
+- Document completion timestamps
+- Record dependencies and findings
+- Maintain risk register
+- List next action items
+- Keep plans accurate and updated
+
+### Milestone Management
+- Review output for errors/warnings
+- Document and fix issues
+- Update progress tracking
+- Verify requirements completion
+- Mark tasks as complete
+
+## Development Environment
+
+### Package Management
+- Use Poetry for dependencies
+- Avoid direct pip usage
+- Manage packages through proper tools
+
+### Logging
+- Use appropriate log levels (ERROR, WARNING, INFO, DEBUG)
+- Configure through environment variables
+- Keep logging consistent
+- Don't modify logging in code
+
+## LLM Interaction
+- Use 'c' to mean continue
+- Present options after completing tasks
+- Ask clarifying questions when needed
+- Provide context for changes
+- Explain complex operations step by step
+
+## Testing
+- Write tests first when possible
+- Test public interfaces
+- Use meaningful test names
+- Keep tests independent
+- Cover edge cases
+- Test error conditions 
