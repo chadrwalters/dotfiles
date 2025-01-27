@@ -1,0 +1,36 @@
+# Structure Rules
+# Defines the organization and targeting of rule files
+
+rules:
+    organization:
+        base_rules:
+            - "All rules must be in .cursor/rules/"
+            - "No subdirectories allowed in rules folder"
+            - "Use descriptive filenames ending in .rules"
+            - "Each rules file must have a single clear purpose"
+
+    targeting:
+        glob_patterns:
+            python: "**.py"
+            tests: "tests/**/*.py"
+            docs: "docs/**/*.md"
+            config: "config/**/*"
+
+    rule_format:
+        - "Each file must start with # comment describing purpose"
+        - "Use YAML-style rules structure"
+        - "Include glob pattern if file-specific"
+        - "Group related rules under logical headers"
+
+    file_operations:
+        reading:
+            forbidden:
+                - "NEVER use CAT command"
+                - "NEVER use direct file system commands"
+            required:
+                - "Use read_file tool for all file reading"
+                - "Use open_file tag in conversation for file context"
+        writing:
+            - "Use proper edit blocks for file modifications"
+            - "Always include file path in code blocks"
+            - "Use diff format when showing changes"

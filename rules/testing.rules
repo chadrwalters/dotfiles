@@ -1,0 +1,29 @@
+# Testing Rules
+# Applies to: tests/**/*.py
+
+rules:
+    testing:
+        standards:
+            - Use pytest as test framework
+            - Tests must be in tests/ directory
+            - Test files must start with test_
+            - One test file per source file
+            - Use fixtures for test setup
+
+        execution:
+            command_format: "uv run pytest [options]"
+            standard_command: "uv run pytest -v"
+            coverage_command: "uv run pytest --cov=src/ tests/"
+            forbidden:
+                - "NEVER use python -m pytest"
+                - "NEVER use pytest directly"
+                - "NEVER use python test_file.py"
+
+        prerequisites:
+            - "Type checking MUST run before tests"
+            - "Command: uv run mypy src/ tests/"
+
+        coverage:
+            - Minimum 80% code coverage required
+            - Coverage reports generated with pytest-cov
+            - All new code must have tests

@@ -1,0 +1,121 @@
+# Planning Rules
+# Applies to: .cursor/**/*
+
+rules:
+    initialization:
+        composer_start:
+            - "Every new Composer conversation starts in NO_MODE"
+            - "Print initialization header with available commands"
+            - "Suggest entering PLAN mode for new projects"
+            - "Check for existing .Plan file"
+
+        required_files:
+            - "Verify existence of .cursor/rules/"
+            - "Create .Plan file if starting new project"
+            - "Initialize .cursorscratchpad if needed"
+
+        first_response:
+            template: |
+                # Mode: NO_MODE
+                No mode active. Type 'PLAN' to enter planning mode or 'ACT' to enter action mode.
+
+                ## Available Commands:
+                - PLAN: Enter planning mode (for project planning)
+                - ACT: Enter action mode (for implementation)
+                - create_plan: Start a new project plan
+                - update_rules: Modify rules
+                - update_docs: Update documentation
+
+                ## Current Status:
+                {status_summary}
+
+                How would you like to proceed?
+
+    planning:
+        applicability:
+            - "These rules ONLY apply in Cursor Composer mode"
+            - "In Cursor Chat mode, no plan/act mode restrictions apply"
+            - "Mode system is not active in Chat mode"
+
+        mode_headers:
+            format: |
+                # Mode: {current_mode}
+                {mode_description}
+
+            descriptions:
+                NO_MODE: "No mode active. Type 'PLAN' to enter planning mode or 'ACT' to enter action mode."
+                PLAN: "In planning mode. Planning and documentation changes only. Type 'ACT' to switch to action mode."
+                ACT: "In action mode. Full system access enabled. Type 'PLAN' to return to planning mode."
+
+        plan_template:
+            format: |
+                # Mode: {current_mode}
+                {mode_description}
+
+                # Plan Status
+                - Current Phase: Planning/Implementation/Testing/Complete
+                - Progress: 0%
+
+                # Summary
+                Brief description of what we're trying to accomplish.
+
+                # Assumptions
+                - Key assumption 1
+                - Key assumption 2
+
+                # References
+                - Files: `dir/file` - Description of relevance
+                - Libraries: `http://library.com` - Why we need it
+                - Documentation: `http://docs.com` - What it provides
+
+                # Implementation Steps
+                1. First step (`dir/file`)
+                   - Details of what needs to change
+                   - Expected outcome
+                2. Second step (`another/file`)
+                   - Specific changes needed
+                   - Dependencies on previous steps
+
+                # Confidence Level
+                - **High** confidence in: X
+                - **Medium** confidence in: Y
+                - **Low** confidence in: Z - Requires investigation
+
+                # Questions
+                1. Question about implementation approach?
+                2. Unclear requirements to resolve?
+
+        operation_modes:
+            default_mode: "NO_MODE"
+            valid_modes: ["NO_MODE", "PLAN", "ACT"]
+            conversation_rules:
+                - "Every new Composer conversation starts in NO_MODE"
+                - "Print mode header at start of EVERY response"
+                - "Mode persists until explicitly changed"
+                - "Mode system is inactive in Chat mode"
+            mode_rules:
+                - "Switch to PLAN mode when user types 'PLAN'"
+                - "Switch to ACT mode when user types 'ACT'"
+                - "Confirm mode changes in responses"
+                - "Reject action requests in PLAN mode"
+                - "Only modify docs/* or .Plan in PLAN mode"
+                - "In NO_MODE, suggest entering PLAN or ACT mode based on user request"
+                - "Include mode header in every response"
+
+        plan_mode:
+            allowed_actions:
+                - "Read any files"
+                - "Modify files in docs/*"
+                - "Modify .Plan"
+                - "Gather requirements"
+                - "Ask clarifying questions"
+                - "Present plan updates"
+
+        act_mode:
+            allowed_actions:
+                - "Execute planned changes"
+                - "Modify any source files"
+                - "Update .Plan with status"
+                - "Run tests"
+                - "Document progress"
+

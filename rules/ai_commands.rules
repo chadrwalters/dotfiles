@@ -1,0 +1,59 @@
+# AI Commands Rules
+# Applies to: .cursor/**/*
+
+rules:
+    ai_commands:
+        update_docs:
+            glob: "docs/**/*.md"
+            procedure:
+                - "Parse all Markdown files in docs/"
+                - "Extract relevant updates from conversation"
+                - "Apply any relevant and useful updates"
+
+        create_plan:
+            glob: ".Plan"
+            procedure:
+                - "If there is a plan, you MUST delete it"
+                - "Create a new plan using planning.rules template"
+                - "Include status markers for each step"
+                - "Operate in PLAN mode until plan is approved"
+                - "Extract relevant updates from conversation"
+                - "Apply conversation updates to plan"
+
+        update_rules:
+            glob: ".cursor/rules/*.rules"
+            procedure:
+                - "Parse target rules file"
+                - "Extract rule updates from conversation"
+                - "Apply any relevant and useful updates"
+                - "Maintain YAML-style formatting"
+
+        update_plan:
+            procedure:
+                - "You must read the plan in .Plan"
+                - "You must verify current operation mode (PLAN or ACT)"
+                - "In PLAN mode: only update plan content and structure"
+                - "In ACT mode: only update status and progress"
+                - "You must update status markers for each step"
+                - "Apply any relevant and useful parts of conversation to the plan"
+
+        update_scratchpad:
+            procedure:
+                - "You MUST read the .cursorscratchpad file"
+                - "Extract relevant insights from current context"
+                - "Interleave your thoughts with previous thoughts in the <SCRATCHPAD> buffer"
+                - "You MUST write your thoughts in the <SCRATCHPAD> buffer"
+                - "Consolidate your thoughts as necessary, grouping related thoughts together"
+
+        update_note:
+            procedure:
+                - "You MUST read the .cursornotes and .cursorscratchpad files"
+                - "Consolidate previous thoughts from <SCRATCHPAD>"
+                - "Integrate new information from current conversation"
+                - "Format as dated entry, request date from user"
+                - "Append to .cursornotes file"
+                - "Clear <SCRATCHPAD> section in .cursorscratchpad"
+
+        run_tests:
+            procedure:
+                - "Run command: uv run pytest -v"

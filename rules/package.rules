@@ -1,0 +1,24 @@
+# Package Management Rules
+# Applies to: **.py
+
+rules:
+    execution:
+        forbidden:
+            - "NEVER use direct 'python' or 'python3' commands"
+            - "NEVER use 'pip' directly"
+            - "NEVER use 'virtualenv' or 'venv' directly"
+
+        required:
+            - "ALL Python execution MUST use 'uv'"
+            - "ALL package management MUST use 'uv'"
+
+        commands:
+            run: "uv run python script.py"
+            test: "uv run pytest"
+            install: "uv pip install package"
+            requirements: "uv pip compile requirements.in"
+
+    virtual_environments:
+        creation: "uv venv"
+        activation: "source .venv/bin/activate"  # Unix
+        activation_windows: ".venv\\Scripts\\activate"  # Windows
