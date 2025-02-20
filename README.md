@@ -7,6 +7,8 @@ A specialized dotfiles management system for maintaining consistent configuratio
 When working on multiple repositories for Cursor and Windsurf development, you often need consistent configuration files across projects. This tool allows you to:
 - Backup configuration files from a working repository
 - Restore those configurations to other repositories
+- Bootstrap new repositories with existing configurations
+- Safely wipe configurations when needed
 - Maintain consistency across your development environment
 
 ## Supported Configurations
@@ -58,6 +60,45 @@ The script will:
 4. Warn about any existing files
 5. Restore after confirmation
 
+### Bootstrap New Repository
+
+To set up a new repository with configurations from an existing backup:
+
+```bash
+python bootstrap.py
+```
+
+The script will:
+1. Show available repositories to bootstrap
+2. Check if the target repository already has configurations
+3. Show available backups to use as template
+4. Set up the new repository with the selected configurations
+
+This is particularly useful when:
+- Starting a new Cursor or Windsurf project
+- Wanting to replicate a working configuration
+- Ensuring consistent setup across repositories
+
+### Wipe Configuration
+
+To remove all configurations from a repository:
+
+```bash
+python wipe.py
+```
+
+The script will:
+1. Show available repositories to wipe
+2. Check for existing backups and their timestamps
+3. Offer to create a backup if none exists
+4. Ask for confirmation before wiping
+5. Remove all configuration files and directories
+
+Use this when you want to:
+- Start fresh with configurations
+- Remove outdated settings
+- Clean up before applying new configurations
+
 ## Directory Structure
 
 ```
@@ -71,6 +112,8 @@ parent_directory/
 │   │       └── git/            # Git configs
 │   ├── backup.py
 │   ├── restore.py
+│   ├── bootstrap.py
+│   ├── wipe.py
 │   └── config.py
 ├── project1/                    # Sibling development repo
 ├── project2/                    # Another development repo
@@ -107,6 +150,8 @@ BACKUP_CONFIGS = {
 - Only works with Git repositories as siblings
 - Provides warnings before overwriting existing files
 - Preserves file permissions during backup/restore
+- Always confirms before destructive operations
+- Offers backup creation before wiping configurations
 
 ## Future Enhancements
 
@@ -114,3 +159,4 @@ BACKUP_CONFIGS = {
 - Backup history with timestamps
 - Configuration templates
 - Automatic backup on repository changes
+- Configuration validation and testing
