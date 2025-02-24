@@ -1,15 +1,8 @@
-"""Core functionality for dotfiles management."""
+"""Core functionality for dotfiles."""
 
-from .branch import GitError, switch_branch
-from .commands import COMMANDS
+from .backup import BackupManager
 from .config import Config
-from .repository import GitRepository, RepositoryManager
+from .repository import GitRepository
+from .restore import RestoreManager
 
-__all__ = [
-    "Config",
-    "GitError",
-    "GitRepository",
-    "RepositoryManager",
-    "COMMANDS",
-    "switch_branch",
-]
+__all__ = ["BackupManager", "Config", "GitRepository", "RestoreManager"]

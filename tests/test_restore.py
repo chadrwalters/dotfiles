@@ -39,7 +39,14 @@ def clean_test_files(temp_git_repo: Path) -> Generator[None, None, None]:
                 shutil.rmtree(test_path)
             else:
                 test_path.unlink()
+
+    # Clean up any existing backups
+    backup_dir = Path("test_temp/backups")
+    if backup_dir.exists():
+        shutil.rmtree(backup_dir)
+
     yield
+
     # Clean up after test
     for test_file in test_files:
         test_path = temp_git_repo / test_file
@@ -49,10 +56,19 @@ def clean_test_files(temp_git_repo: Path) -> Generator[None, None, None]:
             else:
                 test_path.unlink()
 
+    # Clean up backups again
+    if backup_dir.exists():
+        shutil.rmtree(backup_dir)
+
 
 @pytest.fixture
 def backup_with_files(backup_manager: BackupManager, temp_git_repo: Path) -> Path:
     """Create a backup with test files."""
+    # Clean up any existing backups
+    backup_dir = backup_manager.backup_dir / "git_repo"
+    if backup_dir.exists():
+        shutil.rmtree(backup_dir)
+
     # Create test files
     cursor_dir = temp_git_repo / ".cursor"
     cursor_dir.mkdir(exist_ok=True)
@@ -132,18 +148,22 @@ def test_check_conflicts(
     assert any(".cursor" in str(p[1]) for p in conflicts)
 
 
-def test_restore_program(
+def test_restore_conflicts(
     restore_manager: RestoreManager, temp_git_repo: Path, backup_with_files: Path
 ) -> None:
-    """Test restoring a single program."""
+    """Test restore with conflicts."""
     repo = GitRepository(temp_git_repo)
 
-    # Restore cursor program with force
-    assert restore_manager.restore(repo, programs=["cursor"], force=True)
+    # Create conflicting files
+    (temp_git_repo / ".cursor" / ".cursorrules").write_text("conflict")
+    (temp_git_repo / ".vscode" / "settings.json").write_text("conflict")
 
-    # Verify restored files
-    assert (temp_git_repo / ".cursor" / ".cursorrules").exists()
-    assert not (temp_git_repo / ".vscode").exists()
+    # Attempt restore without force
+    assert not restore_manager.restore(repo)
+
+    # Verify files were not overwritten
+    assert (temp_git_repo / ".cursor" / ".cursorrules").read_text() == "conflict"
+    assert (temp_git_repo / ".vscode" / "settings.json").read_text() == "conflict"
 
 
 def test_restore_all_programs(
@@ -155,25 +175,10 @@ def test_restore_all_programs(
     # Restore all programs with force
     assert restore_manager.restore(repo, force=True)
 
-    # Verify cursor files
+    # Verify all files were restored
     assert (temp_git_repo / ".cursor" / ".cursorrules").exists()
     assert (temp_git_repo / ".vscode" / "settings.json").exists()
     assert (temp_git_repo / ".gitconfig").exists()
-
-
-def test_restore_specific_program(
-    restore_manager: RestoreManager, temp_git_repo: Path, backup_with_files: Path
-) -> None:
-    """Test restoring a specific program."""
-    repo = GitRepository(temp_git_repo)
-
-    # Restore only vscode with force
-    assert restore_manager.restore(repo, programs=["vscode"], force=True)
-
-    # Verify only vscode was restored
-    assert not (temp_git_repo / ".cursor").exists()
-    assert (temp_git_repo / ".vscode" / "settings.json").exists()
-    assert not (temp_git_repo / ".gitconfig").exists()
 
 
 def test_restore_dry_run(

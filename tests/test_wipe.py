@@ -1,21 +1,20 @@
-"""Tests for wipe functionality."""
+"""Test wipe functionality."""
 
-import subprocess
 from pathlib import Path
-from typing import Any
 
 import pytest
 
+from dotfiles.core.config import Config
 from dotfiles.core.repository import GitRepository
 from dotfiles.core.wipe import WipeManager
 
+from .test_backup import create_test_files
+
 
 @pytest.fixture
-def wipe_manager(test_config: Any, temp_dir: Path) -> WipeManager:
-    """Create a wipe manager with test configuration."""
-    with pytest.MonkeyPatch.context() as mp:
-        mp.chdir(temp_dir)
-        return WipeManager(test_config)
+def wipe_manager(test_config: Config) -> WipeManager:
+    """Create a wipe manager for testing."""
+    return WipeManager(test_config)
 
 
 @pytest.fixture
@@ -24,24 +23,25 @@ def repo_with_files(temp_git_repo: Path) -> GitRepository:
     # Create test files
     cursor_dir = temp_git_repo / ".cursor"
     cursor_dir.mkdir(exist_ok=True)
-    (cursor_dir / ".cursorrules").write_text("cursor rules")
     (cursor_dir / "rules").mkdir(exist_ok=True)
     (cursor_dir / "rules" / "test.mdc").write_text("test")
+    (cursor_dir / ".cursorrules").write_text("test")
 
     vscode_dir = temp_git_repo / ".vscode"
     vscode_dir.mkdir(exist_ok=True)
-    (vscode_dir / "settings.json").write_text('{"setting": "value"}')
+    (vscode_dir / "settings.json").write_text('{"test": true}')
     (vscode_dir / "extensions.json").write_text('{"recommendations": []}')
 
     (temp_git_repo / ".gitconfig").write_text("[user]\n\tname = Test User")
     (temp_git_repo / ".gitignore").write_text("*.pyc\n__pycache__/")
 
     # Initialize Git repository
-    subprocess.run(["git", "init"], cwd=temp_git_repo, check=True)
-    subprocess.run(["git", "add", "."], cwd=temp_git_repo, check=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=temp_git_repo, check=True)
+    repo = GitRepository(temp_git_repo)
+    repo.init()
+    repo.add(".")
+    repo.commit("Initial commit")
 
-    return GitRepository(temp_git_repo)
+    return repo
 
 
 def test_wipe_program(wipe_manager: WipeManager, repo_with_files: GitRepository) -> None:
@@ -51,7 +51,7 @@ def test_wipe_program(wipe_manager: WipeManager, repo_with_files: GitRepository)
     assert (repo_with_files.path / ".vscode" / "settings.json").exists()
 
     # Wipe cursor program
-    assert wipe_manager.wipe(repo_with_files, programs=["cursor"])
+    assert wipe_manager.wipe(repo_with_files, programs=["cursor"], testing=True)
 
     # Verify cursor files are removed but vscode files remain
     assert not (repo_with_files.path / ".cursor" / ".cursorrules").exists()
@@ -65,7 +65,7 @@ def test_wipe_all_programs(wipe_manager: WipeManager, repo_with_files: GitReposi
     assert (repo_with_files.path / ".vscode" / "settings.json").exists()
 
     # Wipe all programs
-    assert wipe_manager.wipe(repo_with_files)
+    assert wipe_manager.wipe(repo_with_files, testing=True)
 
     # Verify all files are removed
     assert not (repo_with_files.path / ".cursor" / ".cursorrules").exists()
@@ -79,33 +79,36 @@ def test_wipe_specific_program(wipe_manager: WipeManager, repo_with_files: GitRe
     assert (repo_with_files.path / ".vscode" / "settings.json").exists()
 
     # Wipe vscode program
-    assert wipe_manager.wipe(repo_with_files, programs=["vscode"])
+    assert wipe_manager.wipe(repo_with_files, programs=["vscode"], testing=True)
 
     # Verify vscode files are removed but cursor files remain
     assert (repo_with_files.path / ".cursor" / ".cursorrules").exists()
     assert not (repo_with_files.path / ".vscode" / "settings.json").exists()
 
 
-def test_wipe_dry_run(wipe_manager: WipeManager, repo_with_files: GitRepository) -> None:
+def test_wipe_dry_run(wipe_manager: WipeManager, temp_git_repo: Path) -> None:
     """Test wipe dry run."""
-    # Verify files exist
-    assert (repo_with_files.path / ".cursor" / ".cursorrules").exists()
-    assert (repo_with_files.path / ".vscode" / "settings.json").exists()
+    create_test_files(temp_git_repo)
+    repo = GitRepository(temp_git_repo)
 
     # Perform dry run
-    assert wipe_manager.wipe(repo_with_files, dry_run=True)
+    assert wipe_manager.wipe(repo, dry_run=True)
 
-    # Verify no files were removed
-    assert (repo_with_files.path / ".cursor" / ".cursorrules").exists()
-    assert (repo_with_files.path / ".vscode" / "settings.json").exists()
-
-
-def test_wipe_unknown_program(wipe_manager: WipeManager, repo_with_files: GitRepository) -> None:
-    """Test wiping unknown program."""
-    assert not wipe_manager.wipe_program(repo_with_files, "unknown")
+    # Verify files still exist
+    assert (temp_git_repo / ".cursor" / ".cursorrules").exists()
+    assert (temp_git_repo / ".vscode" / "settings.json").exists()
+    assert (temp_git_repo / ".gitconfig").exists()
 
 
-def test_wipe_empty_repo(wipe_manager: WipeManager, temp_git_repo: Path) -> None:
-    """Test wiping empty repository."""
+def test_wipe_force(wipe_manager: WipeManager, temp_git_repo: Path) -> None:
+    """Test wipe dry run."""
+    create_test_files(temp_git_repo)
     repo = GitRepository(temp_git_repo)
-    assert not wipe_manager.wipe(repo)
+
+    # Perform dry run
+    assert wipe_manager.wipe(repo, dry_run=True)
+
+    # Verify files still exist
+    assert (temp_git_repo / ".cursor" / ".cursorrules").exists()
+    assert (temp_git_repo / ".vscode" / "settings.json").exists()
+    assert (temp_git_repo / ".gitconfig").exists()

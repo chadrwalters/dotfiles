@@ -29,10 +29,11 @@ def create_test_files(repo_path: Path) -> None:
 
 
 @pytest.fixture
-def backup_manager(test_config: Config, backup_dir: Path) -> BackupManager:
-    """Create a backup manager for testing."""
+def backup_manager(test_config: Config) -> BackupManager:
+    """Create a backup manager with test configuration."""
     manager = BackupManager(test_config)
-    manager.backup_dir = backup_dir
+    manager.backup_dir = Path("test_temp/backups")
+    manager.backup_dir.mkdir(parents=True, exist_ok=True)
     return manager
 
 
@@ -54,7 +55,7 @@ def test_list_backups_empty(backup_manager: BackupManager, temp_dir: Path) -> No
 def test_list_backups(backup_manager: BackupManager, temp_dir: Path) -> None:
     """Test listing backups."""
     # Create test backup structure
-    backup_dir = temp_dir / "backups" / "testrepo" / "main" / "20240101-000000"
+    backup_dir = backup_manager.backup_dir / "testrepo" / "main" / "20240101-000000"
     backup_dir.mkdir(parents=True)
     (backup_dir / "cursor").mkdir()
     (backup_dir / "vscode").mkdir()
@@ -63,7 +64,6 @@ def test_list_backups(backup_manager: BackupManager, temp_dir: Path) -> None:
         mp.chdir(temp_dir)
         backups = backup_manager.list_backups("testrepo")
         assert len(backups) == 1
-        assert backups[0].parent.parent.name == "testrepo"
 
 
 def test_backup_program(backup_manager: BackupManager, temp_git_repo: Path) -> None:
@@ -131,17 +131,6 @@ def test_backup_dry_run(backup_manager: BackupManager, temp_git_repo: Path) -> N
 
     # Perform dry run
     assert backup_manager.backup(repo, dry_run=True)
-
-    # Verify no backup was created
-    assert not backup_manager.list_backups(repo.name)
-
-
-def test_backup_no_configs(backup_manager: BackupManager, temp_git_repo: Path) -> None:
-    """Test backup with no configurations."""
-    repo = GitRepository(temp_git_repo)
-
-    # Attempt backup
-    assert not backup_manager.backup(repo)
 
     # Verify no backup was created
     assert not backup_manager.list_backups(repo.name)

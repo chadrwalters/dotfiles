@@ -1,1 +1,1 @@
-"""Test package for dotfiles."""
+"""Tests for dotfiles."""

@@ -1,135 +1,136 @@
-"""Shared test fixtures."""
+"""Test configuration."""
+
+from __future__ import annotations
 
 import shutil
-import subprocess
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Generator
 
 import pytest
 
 from dotfiles.core.backup import BackupManager
-from dotfiles.core.bootstrap import BootstrapManager
 from dotfiles.core.config import Config
+from dotfiles.core.repository import GitRepository
 from dotfiles.core.restore import RestoreManager
+from dotfiles.core.wipe import WipeManager
 
 
 @pytest.fixture
 def temp_dir() -> Generator[Path, None, None]:
     """Create a temporary directory for tests."""
-    with TemporaryDirectory() as temp:
-        yield Path(temp)
+    temp_dir = Path("test_temp")
+    temp_dir.mkdir(exist_ok=True)
+    yield temp_dir
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir)
 
 
 @pytest.fixture
-def backup_dir(temp_dir: Path) -> Generator[Path, None, None]:
-    """Create a temporary backup directory for tests."""
-    backup_dir = temp_dir / "backups"
-    if backup_dir.exists():
-        shutil.rmtree(backup_dir)
-    backup_dir.mkdir(parents=True)
-    yield backup_dir
-    if backup_dir.exists():
-        shutil.rmtree(backup_dir)
-
-
-@pytest.fixture
-def test_config() -> Config:
+def test_config():
     """Create a test configuration."""
     config = Config()
-    config._merge_config(
-        {
-            "search_paths": ["/test/path1", "/test/path2"],
-            "max_depth": 2,
-            "exclude_patterns": ["test_exclude"],
-            "programs": {
-                "cursor": {
-                    "name": "Cursor",
-                    "paths": [".cursor/.cursorrules", ".cursor/"],
-                    "files": [".cursor/.cursorrules", ".cursor/rules/test.mdc"],
-                    "directories": [".cursor"],
-                },
-                "vscode": {
-                    "name": "Visual Studio Code",
-                    "paths": [".vscode/settings.json", ".vscode/"],
-                    "files": [".vscode/settings.json", ".vscode/extensions.json"],
-                    "directories": [".vscode"],
-                },
-                "git": {
-                    "name": "Git",
-                    "paths": [".gitconfig", ".gitignore"],
-                    "files": [".gitconfig", ".gitignore"],
-                    "directories": [],
-                },
-                "testprogram": {
-                    "name": "Test Program",
-                    "paths": [".testconfig", ".test/"],
-                    "files": [".testconfig"],
-                    "directories": [".test"],
-                },
-            },
-        }
-    )
+    config.programs = {
+        "cursor": {
+            "name": "Cursor",
+            "files": [".cursor/.cursorrules"],
+            "directories": [".cursor/rules"],
+        },
+        "vscode": {
+            "name": "Visual Studio Code",
+            "files": [".vscode/settings.json", ".vscode/extensions.json"],
+            "directories": [],
+        },
+        "git": {
+            "name": "Git",
+            "files": [".gitconfig", ".gitignore"],
+            "directories": [],
+        },
+        "test": {
+            "name": "Test",
+            "files": [".testrc"],
+            "directories": [".test"],
+        },
+    }
     return config
 
 
 @pytest.fixture
-def backup_manager(test_config: Config, backup_dir: Path) -> BackupManager:
+def test_repo(temp_dir):
+    """Create a test repository."""
+    repo_dir = temp_dir / "test_repo"
+    repo_dir.mkdir(exist_ok=True)
+
+    # Create test files
+    cursor_dir = repo_dir / ".cursor"
+    cursor_dir.mkdir(exist_ok=True)
+    (cursor_dir / "rules").mkdir(exist_ok=True)
+    (cursor_dir / "rules" / "test.mdc").write_text("test")
+    (cursor_dir / ".cursorrules").write_text("test")
+
+    vscode_dir = repo_dir / ".vscode"
+    vscode_dir.mkdir(exist_ok=True)
+    (vscode_dir / "settings.json").write_text('{"test": true}')
+    (vscode_dir / "extensions.json").write_text('{"recommendations": []}')
+
+    (repo_dir / ".gitconfig").write_text("[user]\n\tname = Test User")
+    (repo_dir / ".gitignore").write_text("*.pyc\n__pycache__/")
+
+    return GitRepository(repo_dir)
+
+
+@pytest.fixture
+def temp_git_repo(temp_dir) -> Path:
+    """Create a temporary Git repository for testing."""
+    repo_dir = temp_dir / "git_repo"
+    repo_dir.mkdir(exist_ok=True)
+
+    # Initialize Git repository
+    repo = GitRepository(repo_dir)
+    repo.init()
+
+    # Create test files
+    cursor_dir = repo_dir / ".cursor"
+    cursor_dir.mkdir(exist_ok=True)
+    (cursor_dir / "rules").mkdir(exist_ok=True)
+    (cursor_dir / "rules" / "test.mdc").write_text("test")
+    (cursor_dir / ".cursorrules").write_text("test")
+
+    vscode_dir = repo_dir / ".vscode"
+    vscode_dir.mkdir(exist_ok=True)
+    (vscode_dir / "settings.json").write_text('{"test": true}')
+    (vscode_dir / "extensions.json").write_text('{"recommendations": []}')
+
+    (repo_dir / ".gitconfig").write_text("[user]\n\tname = Test User")
+    (repo_dir / ".gitignore").write_text("*.pyc\n__pycache__/")
+
+    # Add and commit files
+    repo.add(".")
+    repo.commit("Initial commit")
+
+    return repo_dir
+
+
+@pytest.fixture
+def backup_dir(temp_dir) -> Path:
+    """Create a temporary backup directory for testing."""
+    backup_dir = temp_dir / "backup"
+    backup_dir.mkdir(exist_ok=True)
+    return backup_dir
+
+
+@pytest.fixture
+def backup_manager(test_config: Config) -> BackupManager:
     """Create a backup manager with test configuration."""
-    manager = BackupManager(test_config)
-    manager.backup_dir = backup_dir
-    return manager
+    return BackupManager(test_config)
 
 
 @pytest.fixture
-def temp_git_repo(temp_dir: Path) -> Generator[Path, None, None]:
-    """Create a temporary Git repository."""
-    repo_path = temp_dir / "test_repo"
-    repo_path.mkdir()
-
-    # Initialize Git repo
-    subprocess.run(["git", "init"], cwd=repo_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_path, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_path, check=True)
-
-    # Create and commit a test file
-    test_file = repo_path / "test.txt"
-    test_file.write_text("test content")
-    subprocess.run(["git", "add", "test.txt"], cwd=repo_path, check=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True)
-
-    yield repo_path
-    if repo_path.exists():
-        shutil.rmtree(repo_path)
-
-
-@pytest.fixture
-def temp_workspace(temp_dir: Path, temp_git_repo: Path) -> Generator[Path, None, None]:
-    """Create a temporary workspace with multiple repositories."""
-    workspace = temp_dir / "workspace"
-    workspace.mkdir()
-
-    # Create multiple repositories
-    for name in ["repo1", "repo2", "repo3"]:
-        repo_path = workspace / name
-        subprocess.run(["git", "clone", str(temp_git_repo), str(repo_path)], check=True)
-
-    # Create some non-git directories
-    (workspace / "not_a_repo").mkdir()
-    (workspace / "excluded").mkdir()
-
-    yield workspace
-
-
-@pytest.fixture
-def restore_manager(test_config: Config, backup_manager: BackupManager) -> RestoreManager:
+def restore_manager(test_config: Config) -> RestoreManager:
     """Create a restore manager for testing."""
-    return RestoreManager(test_config, backup_manager)
+    return RestoreManager(test_config)
 
 
 @pytest.fixture
-def bootstrap_manager(test_config: Config, backup_manager: BackupManager) -> BootstrapManager:
-    """Create a bootstrap manager for testing."""
-    manager = BootstrapManager(test_config)
-    manager.backup_manager = backup_manager
-    return manager
+def wipe_manager(test_config: Config) -> WipeManager:
+    """Create a wipe manager for testing."""
+    return WipeManager(test_config)
