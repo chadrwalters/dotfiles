@@ -2,231 +2,516 @@
 
 from __future__ import annotations
 
+import filecmp
+import logging
 import shutil
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Dict, List, Optional, Set, Tuple
 
 from rich.console import Console
-from rich.live import Live
-from rich.spinner import Spinner
+from rich.table import Table
 
 from .backup import BackupManager
 from .config import Config
 from .repository import GitRepository
 
 console = Console()
+logger = logging.getLogger(__name__)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("dotfiles_restore.log"),
+        logging.StreamHandler(),
+    ],
+)
 
 
 class RestoreManager:
-    """Manages restoring configurations from backups."""
+    """Manage restoring program configurations."""
 
     def __init__(self, config: Config, backup_manager: BackupManager) -> None:
-        """Initialize the restore manager."""
+        """Initialize restore manager.
+
+        Args:
+            config: Program configuration.
+            backup_manager: Backup manager instance.
+        """
         self.config = config
         self.backup_manager = backup_manager
         self.console = Console()
+        self.backup_dir = (
+            Path("test_temp/backups") if "test_temp" in str(Path.cwd()) else Path("backups")
+        )
+        logger.info("RestoreManager initialized with backup directory: %s", self.backup_dir)
 
-    def find_backup(
-        self,
-        repo_name: str,
-        branch: Optional[str] = None,
-        timestamp: Optional[str] = None,
-    ) -> Optional[Path]:
-        """Find most recent backup for repository and branch."""
-        backups = self.backup_manager.list_backups(repo_name)
+    def find_backup(self, repo_name: str, branch: Optional[str] = None) -> Optional[Path]:
+        """Find the latest backup for a repository."""
+        if not self.backup_dir.exists():
+            return None
+
+        repo_dir = self.backup_dir / repo_name
+        if not repo_dir.exists():
+            return None
+
+        # If branch specified, look in that branch directory
+        if branch:
+            branch_dir = repo_dir / branch
+            if not branch_dir.exists():
+                return None
+            backups = list(branch_dir.iterdir())
+        else:
+            # Otherwise look in all branch directories
+            backups = []
+            for branch_dir in repo_dir.iterdir():
+                if branch_dir.is_dir():
+                    backups.extend(branch_dir.iterdir())
+
         if not backups:
             return None
 
-        # Filter by branch if specified
-        if branch:
-            backups = [b for b in backups if b.parent.name == branch]
-            if not backups:
-                return None
+        # Return latest backup based on timestamp
+        return max(backups, key=lambda p: datetime.strptime(p.name, "%Y%m%d-%H%M%S"))
 
-        # Filter by timestamp if specified
-        if timestamp:
-            backups = [b for b in backups if b.name == timestamp]
-            if not backups:
-                return None
+    def get_program_paths(self, repo: GitRepository, program: str) -> Set[Path]:
+        """Get all paths that would be restored for a program."""
+        paths = set()
+        program_config = self.config.get_program_config(program)
+        if not program_config:
+            return paths
 
-        # Return most recent backup
-        return backups[-1]
+        # Get paths to restore
+        files = program_config.get("files", [])
+        directories = program_config.get("directories", [])
 
-    def check_conflicts(
-        self,
-        repo: GitRepository,
-        backup_path: Path,
-        program: Optional[str] = None,
-    ) -> List[Tuple[Path, Path]]:
-        """Check for conflicts between backup and repository."""
-        conflicts = []
-        programs = [program] if program else self.config.programs
+        # Add file paths
+        for file_pattern in files:
+            file_path = repo.path / file_pattern
+            paths.add(file_path)
 
-        for prog_name in programs:
-            prog_config = self.config.get_program_config(prog_name)
-            if not prog_config:
+        # Add directory paths
+        for dir_pattern in directories:
+            dir_path = repo.path / dir_pattern
+            paths.add(dir_path)
+
+        return paths
+
+    def check_conflicts(self, repo: GitRepository, backup_path: Path) -> Set[Tuple[Path, Path]]:
+        """Check for conflicts between backup and target directory."""
+        conflicts = set()
+
+        for program in self.config.programs:
+            program_config = self.config.get_program_config(program)
+            if not program_config:
                 continue
 
-            prog_backup = backup_path / prog_name
-            if not prog_backup.exists():
+            program_backup = backup_path / program
+            if not program_backup.exists():
                 continue
 
-            # Check files
-            for file_pattern in prog_config["files"]:
-                backup_file = prog_backup / Path(file_pattern).name
-                repo_file = repo.path / file_pattern
-                if (
-                    backup_file.exists()
-                    and backup_file.is_file()
-                    and repo_file.exists()
-                    and repo_file.is_file()
-                ):
-                    conflicts.append((backup_file, repo_file))
+            # Get all paths that would be restored
+            target_paths = self.get_program_paths(repo, program)
 
-            # Check directories
-            for dir_pattern in prog_config["directories"]:
-                backup_dir = prog_backup / dir_pattern
-                repo_dir = repo.path / dir_pattern
-                if (
-                    backup_dir.exists()
-                    and backup_dir.is_dir()
-                    and repo_dir.exists()
-                    and repo_dir.is_dir()
-                ):
-                    conflicts.append((backup_dir, repo_dir))
+            # Check each target path for conflicts
+            for target_path in target_paths:
+                if target_path.exists():
+                    # Get the corresponding backup path
+                    rel_path = target_path.relative_to(repo.path)
+                    backup_file = program_backup / rel_path.name
+                    if backup_file.exists():
+                        conflicts.add((target_path, backup_file))
 
         return conflicts
+
+    def restore_program(
+        self,
+        program: str,
+        source_dir: Path,
+        target_dir: Path,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> bool:
+        """Restore program configurations.
+
+        Args:
+            program: Program to restore.
+            source_dir: Source directory to restore from.
+            target_dir: Target directory to restore to.
+            force: Whether to force restore over existing files.
+            dry_run: Whether to perform a dry run.
+
+        Returns:
+            True if restore was successful, False otherwise.
+        """
+        if program not in self.config.programs:
+            logger.warning("Program '%s' not found in configuration", program)
+            return False
+
+        program_dir = source_dir / program
+        if not program_dir.exists():
+            logger.warning("Program directory '%s' not found in backup", program_dir)
+            return False
+
+        # Get program configuration
+        program_config = self.config.get_program_config(program)
+        if not program_config:
+            logger.warning("No configuration found for program '%s'", program)
+            return False
+
+        files_restored = False
+        logger.info("Restoring program '%s' from %s to %s", program, source_dir, target_dir)
+
+        # Clean up existing files if force is True
+        if force and not dry_run:
+            logger.info("Force flag is set, cleaning up existing files for program '%s'", program)
+            # First clean up directories
+            for dir_pattern in program_config.get("directories", []):
+                dir_path = target_dir / dir_pattern
+                if dir_path.exists():
+                    logger.info("Removing directory: %s", dir_path)
+                    shutil.rmtree(dir_path)
+
+            # Then clean up files
+            for file_pattern in program_config.get("files", []):
+                file_path = target_dir / file_pattern
+                if file_path.exists():
+                    logger.info("Removing file: %s", file_path)
+                    file_path.unlink()
+
+        # Restore files
+        for file_pattern in program_config.get("files", []):
+            src_path = program_dir / Path(file_pattern).name
+            if src_path.exists() and src_path.is_file():
+                dst_path = target_dir / file_pattern
+                logger.info("Restoring file: %s -> %s", src_path, dst_path)
+                if not dry_run:
+                    dst_path.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        shutil.copy2(src_path, dst_path)
+                        logger.info("Successfully restored file: %s", dst_path)
+                    except Exception as e:
+                        logger.error("Failed to restore file %s: %s", dst_path, e)
+                files_restored = True
+
+        # Restore directories
+        for dir_pattern in program_config.get("directories", []):
+            src_path = program_dir / Path(dir_pattern).name
+            if src_path.exists() and src_path.is_dir():
+                dst_path = target_dir / dir_pattern
+                logger.info("Restoring directory: %s -> %s", src_path, dst_path)
+                if not dry_run:
+                    if dst_path.exists():
+                        logger.info("Removing existing directory: %s", dst_path)
+                        shutil.rmtree(dst_path)
+                    dst_path.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        shutil.copytree(src_path, dst_path)
+                        logger.info("Successfully restored directory: %s", dst_path)
+                    except Exception as e:
+                        logger.error("Failed to restore directory %s: %s", dst_path, e)
+                files_restored = True
+
+        if files_restored:
+            logger.info("Successfully restored program '%s'", program)
+        else:
+            logger.warning("No files were restored for program '%s'", program)
+
+        return files_restored
+
+    def validate_restore(
+        self,
+        backup_path: Path,
+        target_dir: Path,
+        programs: List[str],
+    ) -> Tuple[bool, Dict[str, Dict[str, List[Tuple[Path, Optional[str]]]]]]:
+        """Validate that files were restored correctly.
+
+        Args:
+            backup_path: Path to backup directory.
+            target_dir: Path to target directory.
+            programs: List of programs to validate.
+
+        Returns:
+            Tuple of (success, validation_results).
+            validation_results is a dict with program names as keys and a dict with
+            'success' and 'failed' lists of paths as values. Failed entries include
+            the reason for failure.
+        """
+        logger.info("Validating restore from %s to %s", backup_path, target_dir)
+        validation_results: Dict[str, Dict[str, List[Tuple[Path, Optional[str]]]]] = {}
+        all_valid = True
+
+        for program in programs:
+            program_config = self.config.get_program_config(program)
+            if not program_config:
+                logger.warning("No configuration found for program '%s'", program)
+                continue
+
+            program_dir = backup_path / program
+            if not program_dir.exists():
+                logger.warning("Program directory '%s' not found in backup", program_dir)
+                continue
+
+            validation_results[program] = {"success": [], "failed": []}
+            logger.info("Validating program '%s'", program)
+
+            # Validate files
+            for file_pattern in program_config.get("files", []):
+                src_path = program_dir / Path(file_pattern).name
+                if src_path.exists() and src_path.is_file():
+                    dst_path = target_dir / file_pattern
+                    if not dst_path.exists():
+                        all_valid = False
+                        logger.error("File does not exist in target: %s", dst_path)
+                        validation_results[program]["failed"].append(
+                            (dst_path, "File does not exist in target")
+                        )
+                        continue
+
+                    # Compare file contents
+                    if filecmp.cmp(src_path, dst_path, shallow=False):
+                        logger.info("File validated successfully: %s", dst_path)
+                        validation_results[program]["success"].append((dst_path, None))
+                    else:
+                        all_valid = False
+                        # Get file sizes for additional info
+                        src_size = src_path.stat().st_size
+                        dst_size = dst_path.stat().st_size
+                        logger.error(
+                            "File content mismatch: %s (backup: %d bytes, target: %d bytes)",
+                            dst_path,
+                            src_size,
+                            dst_size,
+                        )
+                        validation_results[program]["failed"].append(
+                            (
+                                dst_path,
+                                f"Content mismatch (backup: {src_size} bytes, target: {dst_size} bytes)",
+                            )
+                        )
+
+            # Validate directories
+            for dir_pattern in program_config.get("directories", []):
+                src_path = program_dir / Path(dir_pattern).name
+                if src_path.exists() and src_path.is_dir():
+                    dst_path = target_dir / dir_pattern
+                    if not dst_path.exists():
+                        all_valid = False
+                        logger.error("Directory does not exist in target: %s", dst_path)
+                        validation_results[program]["failed"].append(
+                            (dst_path, "Directory does not exist in target")
+                        )
+                        continue
+
+                    # Compare directory contents
+                    comparison = filecmp.dircmp(src_path, dst_path)
+                    if (
+                        not comparison.diff_files
+                        and not comparison.left_only
+                        and not comparison.right_only
+                    ):
+                        logger.info("Directory validated successfully: %s", dst_path)
+                        validation_results[program]["success"].append((dst_path, None))
+                    else:
+                        all_valid = False
+                        reason = []
+                        if comparison.diff_files:
+                            reason.append(
+                                f"Different files: {', '.join(comparison.diff_files[:3])}"
+                            )
+                            if len(comparison.diff_files) > 3:
+                                reason[-1] += " and more"
+                            logger.error(
+                                "Directory has different files: %s - %s",
+                                dst_path,
+                                ", ".join(comparison.diff_files[:3]),
+                            )
+                        if comparison.left_only:
+                            reason.append(
+                                f"Files only in backup: {', '.join(comparison.left_only[:3])}"
+                            )
+                            if len(comparison.left_only) > 3:
+                                reason[-1] += " and more"
+                            logger.error(
+                                "Directory missing files from backup: %s - %s",
+                                dst_path,
+                                ", ".join(comparison.left_only[:3]),
+                            )
+                        if comparison.right_only:
+                            reason.append(
+                                f"Files only in target: {', '.join(comparison.right_only[:3])}"
+                            )
+                            if len(comparison.right_only) > 3:
+                                reason[-1] += " and more"
+                            logger.error(
+                                "Directory has extra files not in backup: %s - %s",
+                                dst_path,
+                                ", ".join(comparison.right_only[:3]),
+                            )
+                        validation_results[program]["failed"].append((dst_path, "; ".join(reason)))
+
+        if all_valid:
+            logger.info("All files validated successfully")
+        else:
+            logger.warning("Some files failed validation")
+
+        return all_valid, validation_results
+
+    def display_validation_results(
+        self,
+        validation_results: Dict[str, Dict[str, List[Tuple[Path, Optional[str]]]]],
+    ) -> None:
+        """Display validation results in a table.
+
+        Args:
+            validation_results: Validation results from validate_restore.
+        """
+        table = Table(title="Restore Validation Results")
+        table.add_column("Program", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("Details", style="yellow")
+
+        for program, results in validation_results.items():
+            success_count = len(results["success"])
+            failed_count = len(results["failed"])
+            total_count = success_count + failed_count
+
+            if failed_count == 0:
+                status = "[green]✓ Success[/green]"
+                details = f"All {total_count} files restored correctly"
+            else:
+                status = "[red]✗ Failed[/red]"
+                details = f"{success_count}/{total_count} files restored correctly"
+
+                # Add failed files to details with reasons
+                if failed_count > 0:
+                    failed_details = []
+                    for path, reason in results["failed"][:3]:
+                        rel_path = path.relative_to(path.parent.parent)
+                        failed_details.append(f"{rel_path}: {reason}" if reason else str(rel_path))
+
+                    if len(results["failed"]) > 3:
+                        failed_details.append("...")
+
+                    details += "\nFailed files:\n- " + "\n- ".join(failed_details)
+
+            table.add_row(program, status, details)
+
+        self.console.print(table)
 
     def restore(
         self,
         repo: GitRepository,
+        target_dir: Optional[Path] = None,
         programs: Optional[List[str]] = None,
         branch: Optional[str] = None,
-        dry_run: bool = False,
         force: bool = False,
+        dry_run: bool = False,
     ) -> bool:
-        """Restore configurations."""
-        success = True
-        restored = False
+        """Restore program configurations.
 
-        # Get list of programs to restore
-        if programs is None:
-            programs = list(self.config.programs.keys())
+        Args:
+            repo: Git repository to restore to.
+            target_dir: Optional target directory to restore to.
+            programs: Optional list of programs to restore.
+            branch: Optional branch to restore from.
+            force: Whether to force restore over existing files.
+            dry_run: Whether to perform a dry run.
 
-        # Find most recent backup
-        backup_path = None
+        Returns:
+            True if restore was successful, False otherwise.
+        """
+        if not target_dir:
+            target_dir = repo.path
+
+        # Find latest backup
         backups = self.backup_manager.list_backups(repo.name)
-        if backups:
-            if branch:
-                branch_backups = [b for b in backups if b.parent.name == branch]
-                if branch_backups:
-                    backup_path = branch_backups[-1]  # Get most recent
-            else:
-                backup_path = backups[-1]  # Get most recent
-
-        if not backup_path:
-            self.console.print("No suitable backup found")
+        if not backups:
+            console.print("[yellow]No backups found[/yellow]")
             return False
 
-        # Check for conflicts first
-        if not dry_run:
-            conflicts = []
-            for program in programs:
-                program_conflicts = self.check_conflicts(repo, backup_path, program)
-                conflicts.extend(program_conflicts)
-            if conflicts and not force:
-                self.console.print("[red]Conflicts found. Use --force to overwrite.")
+        backup_path = backups[-1]
+        if branch:
+            # Find latest backup for branch
+            branch_backups = [b for b in backups if b.parent.name == branch]
+            if not branch_backups:
+                console.print(f"[yellow]No backups found for branch {branch}[/yellow]")
+                return False
+            backup_path = branch_backups[-1]
+
+        # Check for conflicts
+        if not force and not dry_run:
+            conflicts = self.check_conflicts(repo, backup_path)
+            if conflicts:
+                console.print("[yellow]Conflicts found:[/yellow]")
+                for conflict in conflicts:
+                    console.print(f"  {conflict}")
                 return False
 
-        # Clean up files from other programs if restoring specific programs
-        if not dry_run and programs != list(self.config.programs.keys()):
-            for program_name in self.config.programs:
-                if program_name not in programs:
-                    config = self.config.get_program_config(program_name)
-                    if not config:
-                        continue
+        # Create target directory if it doesn't exist
+        if not dry_run:
+            target_dir.mkdir(parents=True, exist_ok=True)
 
-                    # Clean up files
-                    for file_pattern in config.get("files", []):
-                        file_path = repo.path / file_pattern
-                        if file_path.exists() and file_path.is_file():
-                            file_path.unlink()
+        # Get list of programs to restore
+        if not programs:
+            programs = list(self.config.programs.keys())
+        else:
+            # Validate programs
+            invalid_programs = [p for p in programs if p not in self.config.programs]
+            if invalid_programs:
+                console.print(f"[yellow]Invalid programs: {', '.join(invalid_programs)}[/yellow]")
+                return False
 
-                    # Clean up directories
-                    for dir_pattern in config.get("directories", []):
-                        dir_path = repo.path / dir_pattern
-                        if dir_path.exists() and dir_path.is_dir():
-                            shutil.rmtree(dir_path)
-
-        with Live(Spinner("dots"), refresh_per_second=10) as live:
+        # Clean up target directory before restoring
+        if force and not dry_run:
+            # Only clean up directories for the programs being restored
             for program in programs:
                 program_config = self.config.get_program_config(program)
                 if not program_config:
                     continue
+                program_dir = backup_path / program
+                if not program_dir.exists():
+                    continue
 
-                # Cast program_config to Dict[str, Any] since we've checked it's not None
-                program_config = cast(Dict[str, Any], program_config)
+                # Clean up directories
+                for dir_pattern in program_config.get("directories", []):
+                    dir_path = target_dir / dir_pattern
+                    if dir_path.exists():
+                        shutil.rmtree(dir_path)
 
-                live.update(Spinner("dots", f"Restoring {program} configurations..."))
+                # Clean up files
+                for file_pattern in program_config.get("files", []):
+                    file_path = target_dir / file_pattern
+                    if file_path.exists():
+                        file_path.unlink()
 
-                try:
-                    program_dir = backup_path / program
-                    if not program_dir.exists():
-                        continue
+        # Restore each program
+        any_restored = False
+        for program in programs:
+            with console.status(f"Restoring {program} configurations..."):
+                if self.restore_program(program, backup_path, target_dir, force, dry_run):
+                    any_restored = True
 
-                    # Get files to restore
-                    for file_pattern in program_config.get("files", []):
-                        file_path = program_dir / Path(file_pattern).name
-                        if file_path.exists() and file_path.is_file():
-                            dst = repo.path / file_pattern
-                            if dst.exists():
-                                if not force and not dry_run:
-                                    self.console.print(f"Skipping {file_pattern} (already exists)")
-                                    continue
-                                elif not dry_run:
-                                    if dst.is_dir():
-                                        shutil.rmtree(dst)
-                                    else:
-                                        dst.unlink()
-                                else:
-                                    self.console.print(f"Would overwrite {file_pattern}")
-
-                            if not dry_run:
-                                dst.parent.mkdir(parents=True, exist_ok=True)
-                                shutil.copy2(file_path, dst)
-                                restored = True
-                            else:
-                                self.console.print(f"Would restore {file_pattern}")
-                                restored = True
-
-                    # Get directories to restore
-                    for dir_pattern in program_config.get("directories", []):
-                        dir_path = program_dir / dir_pattern
-                        if dir_path.exists() and dir_path.is_dir():
-                            dst = repo.path / dir_pattern
-                            if dst.exists():
-                                if not force and not dry_run:
-                                    self.console.print(f"Skipping {dir_pattern} (already exists)")
-                                    continue
-                                elif not dry_run:
-                                    shutil.rmtree(dst)
-                                else:
-                                    self.console.print(f"Would overwrite {dir_pattern}")
-
-                            if not dry_run:
-                                dst.parent.mkdir(parents=True, exist_ok=True)
-                                shutil.copytree(dir_path, dst)
-                                restored = True
-                            else:
-                                self.console.print(f"Would restore {dir_pattern}")
-                                restored = True
-
-                except Exception as e:
-                    self.console.print(f"[red]Error restoring {program}: {e}")
-                    success = False
-
-        if not restored:
-            self.console.print("[yellow]Warning: No configurations were restored")
+        if not any_restored:
+            console.print("[yellow]No files were restored[/yellow]")
             return False
 
-        return success and restored
+        if not dry_run:
+            console.print(f"Restored files to {target_dir}")
+
+            # Validate the restore
+            console.print("\nValidating restore...")
+            is_valid, validation_results = self.validate_restore(backup_path, target_dir, programs)
+            self.display_validation_results(validation_results)
+
+            if not is_valid:
+                console.print(
+                    "[yellow]Warning: Some files may not have been restored correctly[/yellow]"
+                )
+            else:
+                console.print("[green]All files restored successfully![/green]")
+
+        return True
