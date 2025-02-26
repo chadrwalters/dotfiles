@@ -23,6 +23,15 @@ uv pip install -e ".[dev]"
 
 # Run the dotfiles command
 dotfiles --help
+
+# Backup your configurations
+dotfiles backup ~/projects/myrepo
+
+# List available backups
+dotfiles list
+
+# Restore configurations (automatically uses the latest backup)
+dotfiles restore /path/to/target/directory
 ```
 
 ## Development Setup
@@ -70,44 +79,136 @@ dotfiles --help
 ### Basic Commands
 
 ```bash
-# List available repositories
-dotfiles list repos
-
 # List available backups
-dotfiles list backups
+dotfiles list [REPO] [--verbose] [--latest]
 
 # Backup configurations
-dotfiles backup [--repo REPO] [--program PROGRAM]
+dotfiles backup REPO_PATH [--programs] [--branch BRANCH] [--dry-run]
 
 # Restore configurations
-dotfiles restore [--repo REPO] [--program PROGRAM]
-
-# Bootstrap a new repository
-dotfiles bootstrap [--repo REPO] [--template TEMPLATE]
+dotfiles restore TARGET_DIR [BACKUP_DIR] [--force] [--dry-run]
 
 # Wipe configurations
-dotfiles wipe [--repo REPO] [--program PROGRAM]
+dotfiles wipe REPO_PATH [--programs] [--force] [--dry-run]
 ```
 
-### Branch-Specific Operations
+### Backup Operations
 
 ```bash
-# Backup configurations from specific branch
-dotfiles backup --repo REPO --branch BRANCH
+# Backup all configurations from a repository
+dotfiles backup ~/projects/myrepo
 
-# Restore configurations to specific branch
-dotfiles restore --repo REPO --branch BRANCH
+# List available programs instead of backing up
+dotfiles backup ~/projects/myrepo --programs
+
+# Backup from a specific branch
+dotfiles backup ~/projects/myrepo --branch feature-branch
+
+# Perform a dry run (show what would be backed up without doing it)
+dotfiles backup ~/projects/myrepo --dry-run
 ```
 
-### Program-Specific Operations
+### Restore Operations
 
 ```bash
-# Backup specific program configurations
-dotfiles backup --program cursor
+# Restore to a target directory using the latest backup (automatically detected)
+dotfiles restore /path/to/target/directory
 
-# Restore specific program configurations
-dotfiles restore --program vscode
+# Restore from a specific repository to a target directory
+dotfiles restore repo-name /path/to/target/directory
+
+# Restore from a specific branch
+dotfiles restore repo-name /path/to/target/directory --branch main
+
+# Restore from a specific date
+dotfiles restore repo-name /path/to/target/directory --date 20250226
+
+# Force restore over existing files
+dotfiles restore repo-name /path/to/target/directory --force
+
+# Perform a dry run (show what would be restored without doing it)
+dotfiles restore repo-name /path/to/target/directory --dry-run
 ```
+
+### List Operations
+
+```bash
+# List all available backups
+dotfiles list
+
+# List backups for a specific repository
+dotfiles list myrepo
+
+# Show detailed information about backups
+dotfiles list --verbose
+
+# Show only the latest backup for each repository
+dotfiles list --latest
+```
+
+## Features
+
+- **Automatic Backup Selection**: When restoring, the tool automatically finds and uses the latest backup if no specific backup is provided.
+- **Backup Validation**: After restoring files, the tool validates that all files were restored correctly.
+- **Branch-Specific Backups**: Create and restore backups for specific Git branches.
+- **Dry Run Mode**: Preview what would be backed up or restored without making any changes.
+- **Detailed Reporting**: Get comprehensive information about your backups and restore operations.
+- **Force Mode**: Overwrite existing files when restoring.
+
+## Detailed Command Reference
+
+### Restore Command
+
+The restore command allows you to restore configurations from backups to a target directory:
+
+```bash
+dotfiles restore [REPO_NAME] [TARGET_DIR] [--date DATE] [--branch BRANCH] [--latest] [--force] [--dry-run]
+```
+
+**Arguments:**
+- `REPO_NAME` (optional): The name of the repository to restore from. If not specified, will try to determine it from the target directory or current directory.
+- `TARGET_DIR` (optional): The directory to restore configurations to. If not specified, will use the current directory.
+
+**Options:**
+- `--date`: Date to restore from (format: YYYYMMDD or YYYYMMDD-HHMMSS).
+- `--branch`: Branch to restore from.
+- `--latest`: Use the latest backup regardless of date.
+- `--force`: Force restore over existing files.
+- `--dry-run`: Show what would be restored without making any changes.
+
+**Examples:**
+
+1. Restore latest backup for the current directory:
+   ```bash
+   dotfiles restore
+   ```
+
+2. Restore from a specific repository to current directory:
+   ```bash
+   dotfiles restore cursor-tools
+   ```
+
+3. Restore from a specific repository to a different directory:
+   ```bash
+   dotfiles restore cursor-tools /tmp/test-restore
+   ```
+
+4. Restore from "main" branch:
+   ```bash
+   dotfiles restore cursor-tools --branch main
+   ```
+
+5. Restore from a specific date:
+   ```bash
+   dotfiles restore cursor-tools --date 20250226
+   ```
+
+6. Restore latest backup, ignoring date and branch parameters if any:
+   ```bash
+   dotfiles restore cursor-tools --latest
+   ```
+
+After restoring, the tool will validate that all files were restored correctly and display a summary of the operation.
 
 ## Supported Configurations
 
@@ -152,61 +253,3 @@ programs:
     directories:
       - .cursor
 ```
-
-## Legacy Support
-
-The tool maintains compatibility with existing backup structures and supports all legacy functionality. Legacy Python scripts are preserved in the `legacy/` directory:
-
-- `legacy/backup.py` - Original backup script
-- `legacy/restore.py` - Original restore script
-- `legacy/bootstrap.py` - Original bootstrap script
-- `legacy/wipe.py` - Original wipe script
-- `legacy/config.py` - Original configuration script
-- `legacy/backups_archive/` - Archive of original backups
-
-To use legacy scripts (not recommended for new operations):
-```bash
-python legacy/backup.py
-python legacy/restore.py
-python legacy/bootstrap.py
-python legacy/wipe.py
-```
-
-## Directory Structure
-
-```
-dotfiles/
-├── src/
-│   └── dotfiles/           # Main package
-│       ├── __init__.py
-│       ├── cli.py          # CLI implementation
-│       ├── core/           # Core functionality
-│       └── utils/          # Utility functions
-├── tests/                  # Test suite
-├── backups/               # Backup storage
-├── legacy/                # Legacy code and backups
-├── docs/                  # Documentation
-├── pyproject.toml        # Project configuration
-├── README.md
-└── LICENSE
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a virtual environment with UV
-3. Install development dependencies: `uv pip install -e ".[dev]"`
-4. Make your changes
-5. Run tests: `pytest`
-6. Run formatters and linters:
-   ```bash
-   black .
-   isort .
-   ruff check .
-   mypy .
-   ```
-7. Submit a pull request
-
-## License
-
-See [LICENSE](LICENSE) file.

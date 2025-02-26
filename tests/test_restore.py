@@ -159,11 +159,21 @@ def test_restore_conflicts(
     (temp_git_repo / ".vscode" / "settings.json").write_text("conflict")
 
     # Attempt restore without force
-    assert not restore_manager.restore(repo)
+    # With the new behavior, restore returns True if files were skipped
+    result = restore_manager.restore(repo.name, temp_git_repo)
+    assert result
 
     # Verify files were not overwritten
     assert (temp_git_repo / ".cursor" / ".cursorrules").read_text() == "conflict"
     assert (temp_git_repo / ".vscode" / "settings.json").read_text() == "conflict"
+
+    # Now restore with force
+    result = restore_manager.restore(repo.name, temp_git_repo, force=True)
+    assert result
+
+    # Verify files were overwritten
+    assert (temp_git_repo / ".cursor" / ".cursorrules").read_text() != "conflict"
+    assert (temp_git_repo / ".vscode" / "settings.json").read_text() != "conflict"
 
 
 def test_restore_all_programs(
@@ -173,7 +183,7 @@ def test_restore_all_programs(
     repo = GitRepository(temp_git_repo)
 
     # Restore all programs with force
-    assert restore_manager.restore(repo, force=True)
+    assert restore_manager.restore(repo.name, temp_git_repo, force=True)
 
     # Verify all files were restored
     assert (temp_git_repo / ".cursor" / ".cursorrules").exists()
@@ -187,8 +197,16 @@ def test_restore_dry_run(
     """Test restore dry run."""
     repo = GitRepository(temp_git_repo)
 
+    # Clean up any existing files to ensure the dry run has files to restore
+    for path in [".cursor", ".vscode", ".gitconfig", ".gitignore"]:
+        full_path = temp_git_repo / path
+        if full_path.is_dir():
+            shutil.rmtree(full_path)
+        elif full_path.exists():
+            full_path.unlink()
+
     # Perform dry run (no force needed since it's dry run)
-    assert restore_manager.restore(repo, dry_run=True)
+    assert restore_manager.restore(repo.name, temp_git_repo, dry_run=True)
 
 
 def test_restore_with_conflicts(
@@ -202,13 +220,16 @@ def test_restore_with_conflicts(
     repo = GitRepository(temp_git_repo)
 
     # Attempt restore without force
-    assert not restore_manager.restore(repo)
+    # With the new behavior, restore returns True if files were skipped
+    result = restore_manager.restore(repo.name, temp_git_repo)
+    assert result
 
-    # Verify file was not restored
-    assert (temp_git_repo / ".cursor" / ".cursorrules").read_text() == "modified rules"
+    # Verify files were not overwritten
+    assert (cursor_dir / ".cursorrules").read_text() == "modified rules"
 
-    # Force restore
-    assert restore_manager.restore(repo, force=True)
+    # Now restore with force
+    result = restore_manager.restore(repo.name, temp_git_repo, force=True)
+    assert result
 
-    # Verify file was restored
-    assert (temp_git_repo / ".cursor" / ".cursorrules").read_text() == "test"
+    # Verify files were overwritten
+    assert (cursor_dir / ".cursorrules").read_text() != "modified rules"

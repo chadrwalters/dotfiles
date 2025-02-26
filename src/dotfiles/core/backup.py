@@ -273,13 +273,23 @@ class BackupManager:
         Returns:
             List of backup paths.
         """
-        # Check if we're in test mode by looking for test_temp in the current directory
-        if Path.cwd().name == "test_temp":
-            backup_dir = Path("backups")
-        else:
-            backup_dir = self.backup_dir
+        # Ensure we're using an absolute path for the backup directory
+        backup_dir = self.backup_dir
+        if not backup_dir.is_absolute():
+            # If we're in the dotfiles repository, use the relative path
+            if Path.cwd().name == "dotfiles":
+                backup_dir = Path.cwd() / backup_dir
+            else:
+                # Try to find the dotfiles repository
+                dotfiles_path = Path.home() / "source" / "dotfiles"
+                if dotfiles_path.exists():
+                    backup_dir = dotfiles_path / backup_dir
+                else:
+                    # Fall back to the current directory
+                    backup_dir = Path.cwd() / backup_dir
 
         if not backup_dir.exists():
+            self.console.print(f"[yellow]Backup directory {backup_dir} does not exist[/yellow]")
             return []
 
         if repo:

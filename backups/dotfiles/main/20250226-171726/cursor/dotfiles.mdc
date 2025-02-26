@@ -1,0 +1,76 @@
+---
+description: Dotfiles Python Execution Rules
+globs: ["**/*.py", "src/**/*", "tests/**/*"]
+alwaysApply: false
+---
+Never use cat. You cant parase it.
+
+# Dotfiles Python Execution Rules
+
+## UV-First Development
+
+When working with the dotfiles project, always follow these rules:
+
+1. **Never call Python programs directly**
+   - ❌ `python src/dotfiles/cli.py`
+   - ❌ `./src/dotfiles/cli.py`
+   - ❌ `python -m dotfiles`
+
+2. **Always use UV for execution**
+   - ✅ `uv run dotfiles [command]`
+   - ✅ `uv run python -m dotfiles [command]`
+   - ✅ `uv run pytest tests/`
+
+3. **Always use UV for package management**
+   - ✅ `uv pip install -e .`
+   - ✅ `uv pip install [package]`
+   - ❌ `pip install [package]`
+
+4. **Always use UV for environment management**
+   - ✅ `uv venv create .venv`
+   - ✅ `uv venv run [command]`
+   - ❌ `python -m venv .venv`
+
+## Command Examples
+
+### Running the dotfiles tool
+```bash
+# Run the dotfiles command
+uv run dotfiles --help
+
+# Run specific commands
+uv run dotfiles backup ~/source/project -p cursor
+uv run dotfiles list --verbose
+```
+
+### Development Tasks
+```bash
+# Run tests
+uv run pytest
+
+# Run linting
+uv run ruff check .
+uv run mypy src/
+
+# Run formatting
+uv run black src/
+uv run isort src/
+```
+
+### Installation
+```bash
+# Install in development mode
+uv pip install -e .
+
+# Install with development dependencies
+uv pip install -e ".[dev]"
+```
+
+## Rationale
+
+Using UV consistently provides several benefits:
+- Faster dependency resolution and installation
+- Consistent environment management
+- Reproducible builds
+- Better isolation from system Python
+- Improved performance for all Python operations

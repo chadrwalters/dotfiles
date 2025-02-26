@@ -22,13 +22,6 @@ def cli():
     """Dotfiles management tool."""
 
 
-def validate_programs(ctx, param, value):
-    """Validate and convert programs to a list."""
-    if not value:
-        return None
-    return list(value)
-
-
 @cli.command()
 @click.argument(
     "repo_path", type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path)
@@ -69,75 +62,81 @@ def backup(repo_path: Path, programs: bool, branch: Optional[str], dry_run: bool
 
 
 @cli.command()
+@click.argument("repo_name", required=False)
 @click.argument(
-    "backup_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path)
+    "target_dir", required=False, type=click.Path(file_okay=False, dir_okay=True, path_type=Path)
 )
-@click.argument("target_dir", type=click.Path(file_okay=False, dir_okay=True, path_type=Path))
-@click.option("--force", is_flag=True, help="Force restore over existing files")
+@click.option("--date", "-d", help="Date to restore from (format: YYYYMMDD or YYYYMMDD-HHMMSS)")
+@click.option("--branch", "-b", help="Branch to restore from")
+@click.option("--latest", "-l", is_flag=True, help="Use the latest backup")
+@click.option("--force", "-f", is_flag=True, help="Force restore over existing files")
 @click.option("--dry-run", is_flag=True, help="Show what would be restored without doing it")
-def restore(backup_dir: Path, target_dir: Path, force: bool = False, dry_run: bool = False):
-    """Restore files from backup to target directory."""
+def restore(
+    repo_name: Optional[str] = None,
+    target_dir: Optional[Path] = None,
+    date: Optional[str] = None,
+    branch: Optional[str] = None,
+    latest: bool = False,
+    force: bool = False,
+    dry_run: bool = False,
+):
+    """Restore files from backup.
+
+    REPO_NAME is the name of the repository to restore from. If not specified,
+    will try to determine it from the target directory or current directory.
+
+    TARGET_DIR is the directory to restore configurations to. If not specified,
+    will use the current directory.
+
+    Examples:
+      # Restore latest backup for the current directory
+      dotfiles restore
+
+      # Restore from a specific repository to current directory
+      dotfiles restore cursor-tools
+
+      # Restore from a specific repository to a different directory
+      dotfiles restore cursor-tools /tmp/test-restore
+
+      # Restore from "main" branch
+      dotfiles restore cursor-tools --branch main
+
+      # Restore from a specific date (can use YYYYMMDD or YYYYMMDD-HHMMSS format)
+      dotfiles restore cursor-tools --date 20250226
+
+      # Restore latest backup, ignoring date and branch parameters if any
+      dotfiles restore cursor-tools --latest
+    """
     config = Config()
     backup_manager = BackupManager(config)
-    manager = RestoreManager(config, backup_manager)
-
-    if not backup_dir.exists():
-        console.print(f"[red]Error: Backup directory {backup_dir} does not exist")
-        raise click.Abort()
-
-    if not backup_dir.is_dir():
-        console.print(f"[red]Error: {backup_dir} is not a directory")
-        raise click.Abort()
+    restore_manager = RestoreManager(config, backup_manager)
 
     try:
-        # Create target directory if it doesn't exist
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        # Initialize Git repository if it doesn't exist
-        repo = GitRepository(target_dir)
-
-        # Get list of programs to restore (only those that exist in the backup directory)
-        available_programs = []
-        for program in config.programs.keys():
-            program_dir = backup_dir / program
-            if program_dir.exists() and program_dir.is_dir():
-                available_programs.append(program)
-
-        if not available_programs:
-            console.print("[yellow]No program directories found in the backup[/yellow]")
-            return
-
-        console.print(
-            f"Found {len(available_programs)} program(s) to restore: {', '.join(available_programs)}"
-        )
-
-        # Restore each program
-        any_restored = False
-        for program in available_programs:
-            with console.status(f"Restoring {program} configurations..."):
-                if manager.restore_program(program, backup_dir, target_dir, force, dry_run):
-                    any_restored = True
-
-        if not any_restored:
-            console.print("[yellow]No files were restored[/yellow]")
-            return
-
-        if not dry_run:
-            console.print(f"Restored files to {target_dir}")
-
-            # Validate the restore
-            console.print("\nValidating restore...")
-            is_valid, validation_results = manager.validate_restore(
-                backup_dir, target_dir, available_programs
+        # Determine target directory if not specified
+        if target_dir is None:
+            target_dir = Path.cwd()
+            console.print(
+                f"[yellow]No target directory specified, using current directory: {target_dir}[/yellow]"
             )
-            manager.display_validation_results(validation_results)
 
-            if not is_valid:
-                console.print(
-                    "[yellow]Warning: Some files may not have been restored correctly[/yellow]"
-                )
-            else:
-                console.print("[green]All files restored successfully![/green]")
+        # Determine repo name if not specified
+        if repo_name is None:
+            repo_name = target_dir.name  # Use target directory name as default
+            console.print(f"[yellow]No repository name specified, assuming: {repo_name}[/yellow]")
+
+        if not restore_manager.restore(
+            repo_name=repo_name,
+            target_dir=target_dir,
+            programs=None,
+            branch=branch,
+            date=date,
+            latest=latest,
+            force=force,
+            dry_run=dry_run,
+        ):
+            console.print("[red]Error: Failed to restore files[/red]")
+            raise click.Abort()
+
     except Exception as e:
         console.print(f"[red]Error: {e}")
         raise click.Abort()

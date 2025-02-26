@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+    "redhat.vscode-yaml",
+    "yzhang.markdown-all-in-one",
+    "eamodio.gitlens",
+    "GitHub.github-vscode-theme",
+    "ms-python.mypy-type-checker",
+    "ms-python.black-formatter",
+    "njpwerner.autodocstring"
+  ]
+}
