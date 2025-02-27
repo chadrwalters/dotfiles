@@ -123,6 +123,7 @@ htmlcov/
 
 # Dotfiles specific
 .cache/
+backups/
 !backups/.gitkeep
 dotfiles_restore.log
 
