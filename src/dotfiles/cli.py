@@ -19,7 +19,22 @@ console = Console()
 
 @click.group()
 def cli() -> None:
-    """Dotfiles management tool."""
+    """Dotfiles management tool.
+
+    This tool helps manage configuration files (dotfiles) across multiple repositories.
+    It provides commands for backing up, restoring, and managing configuration files
+    for various programs like cursor, vscode, and more.
+
+    Main commands:
+
+      backup    Back up program configurations from a repository
+      restore   Restore program configurations to a repository
+      list      List available backups
+      wipe      Remove a backup
+      init      Initialize dotfiles configuration
+
+    Run 'dotfiles COMMAND --help' for more information on a specific command.
+    """
 
 
 @cli.command()
@@ -29,12 +44,35 @@ def cli() -> None:
 @click.option(
     "--programs", "-p", is_flag=True, help="List available programs instead of backing up"
 )
-@click.option("--branch", "-b", help="Branch to back up")
-@click.option("--dry-run", is_flag=True, help="Show what would be backed up without doing it")
+@click.option("--branch", "-b", help="Branch to back up (defaults to the current branch)")
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would be backed up without making any changes"
+)
 def backup(repo_path: Path, programs: bool, branch: Optional[str], dry_run: bool) -> None:
-    """Back up program configurations.
+    """Back up program configurations from a repository.
 
-    By default, backs up all configured programs. Use --programs to list available programs.
+    REPO_PATH is the path to the repository to back up (e.g., ~/source/raycast-extensions/extensions/harmonyhub/).
+
+    The backup command will:
+    1. Identify the repository and determine its name
+    2. Create a backup directory with the current timestamp
+    3. Copy configured program files and directories to the backup
+
+    By default, all configured programs will be backed up. Use --programs to list available programs.
+
+    Examples:
+
+      # Back up all configured programs from a repository
+      dotfiles backup ~/source/raycast-extensions/extensions/harmonyhub/
+
+      # List available programs that can be backed up
+      dotfiles backup ~/source/raycast-extensions/extensions/harmonyhub/ --programs
+
+      # Back up from a specific branch
+      dotfiles backup ~/source/raycast-extensions/extensions/harmonyhub/ --branch main
+
+      # Show what would be backed up without making changes
+      dotfiles backup ~/source/raycast-extensions/extensions/harmonyhub/ --dry-run
     """
     try:
         if not repo_path.is_dir():
@@ -64,12 +102,34 @@ def backup(repo_path: Path, programs: bool, branch: Optional[str], dry_run: bool
 @cli.command()
 @click.argument("repo_name", required=True)
 @click.argument("target_dir", type=click.Path(file_okay=False, dir_okay=True, path_type=Path))
-@click.option("--programs", "-p", multiple=True, help="Programs to restore")
-@click.option("--branch", "-b", help="Branch to restore from")
-@click.option("--date", "-d", help="Date to restore from (format: YYYYMMDD-HHMMSS)")
-@click.option("--latest", "-l", is_flag=True, help="Restore from latest backup")
-@click.option("--force", "-f", is_flag=True, help="Force restore even if files exist")
-@click.option("--dry-run", is_flag=True, help="Show what would be restored without doing it")
+@click.option(
+    "--programs",
+    "-p",
+    multiple=True,
+    help="Programs to restore (can specify multiple times, e.g., -p cursor -p vscode)",
+)
+@click.option(
+    "--branch",
+    "-b",
+    help="Branch to restore from (e.g., main, dev). If not specified, the latest backup from any branch will be used.",
+)
+@click.option(
+    "--date",
+    "-d",
+    help="Date to restore from (format: YYYYMMDD-HHMMSS or YYYYMMDD). If not specified, the latest backup will be used.",
+)
+@click.option(
+    "--latest", "-l", is_flag=True, help="Restore from latest backup regardless of branch or date"
+)
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Force restore even if files exist (will overwrite existing files)",
+)
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would be restored without making any changes"
+)
 def restore(
     repo_name: str,
     target_dir: Path,
@@ -80,7 +140,36 @@ def restore(
     force: bool,
     dry_run: bool,
 ) -> None:
-    """Restore program configurations."""
+    """Restore program configurations from a backup.
+
+    REPO_NAME is the name of the repository to restore from (e.g., harmonyhub).
+
+    TARGET_DIR is the directory to restore files to (e.g., ~/source/raycast-extensions/extensions/harmonyhub/).
+
+    The restore command will:
+    1. Find the appropriate backup based on the repository name, branch, and date
+    2. Restore all program configurations found in the backup to the target directory
+    3. Validate that files were restored correctly
+
+    By default, existing files will not be overwritten unless --force is used.
+
+    Examples:
+
+      # Restore the latest backup of 'harmonyhub' to the target directory
+      dotfiles restore harmonyhub ~/source/raycast-extensions/extensions/harmonyhub/
+
+      # Restore from a specific branch and date
+      dotfiles restore harmonyhub ~/source/raycast-extensions/extensions/harmonyhub/ --branch main --date 20250226-184209
+
+      # Force overwrite of existing files
+      dotfiles restore harmonyhub ~/source/raycast-extensions/extensions/harmonyhub/ --force
+
+      # Restore only specific programs
+      dotfiles restore harmonyhub ~/source/raycast-extensions/extensions/harmonyhub/ -p cursor -p vscode
+
+      # Show what would be restored without making changes
+      dotfiles restore harmonyhub ~/source/raycast-extensions/extensions/harmonyhub/ --dry-run
+    """
     try:
         config = Config()
         # Create a backup manager to pass to the restore manager
@@ -106,11 +195,42 @@ def restore(
 
 @cli.command()
 @click.argument("repo_name", required=True)
-@click.option("--branch", "-b", help="Branch to wipe")
-@click.option("--date", "-d", help="Date to wipe (format: YYYYMMDD-HHMMSS)")
-@click.option("--force", "-f", is_flag=True, help="Force wipe without confirmation")
+@click.option(
+    "--branch", "-b", help="Branch to wipe (if not specified, all branches will be wiped)"
+)
+@click.option(
+    "--date",
+    "-d",
+    help="Date to wipe (format: YYYYMMDD-HHMMSS or YYYYMMDD). If not specified, all backups will be wiped.",
+)
+@click.option("--force", "-f", is_flag=True, help="Force wipe without confirmation prompt")
 def wipe(repo_name: str, branch: Optional[str], date: Optional[str], force: bool) -> None:
-    """Wipe a backup."""
+    """Wipe (delete) backups for a repository.
+
+    REPO_NAME is the name of the repository to wipe backups for (e.g., harmonyhub).
+
+    The wipe command will:
+    1. Find backups matching the specified repository, branch, and date
+    2. Prompt for confirmation (unless --force is used)
+    3. Delete the matching backups
+
+    Examples:
+
+      # Wipe all backups for a repository (with confirmation)
+      dotfiles wipe harmonyhub
+
+      # Wipe backups for a specific branch
+      dotfiles wipe harmonyhub --branch main
+
+      # Wipe a specific backup by date
+      dotfiles wipe harmonyhub --date 20250226-184209
+
+      # Force wipe without confirmation
+      dotfiles wipe harmonyhub --force
+
+      # Combine options
+      dotfiles wipe harmonyhub --branch main --date 20250226-184209 --force
+    """
     try:
         config = Config()
         manager = WipeManager(config)
@@ -131,19 +251,63 @@ def wipe(repo_name: str, branch: Optional[str], date: Optional[str], force: bool
 
 @cli.command()
 def init() -> None:
-    """Initialize dotfiles configuration."""
+    """Initialize dotfiles configuration.
+
+    This command will create a default configuration file if one doesn't exist.
+    The configuration file defines which programs and files to back up.
+
+    Currently not fully implemented.
+
+    Example:
+
+      # Initialize dotfiles configuration
+      dotfiles init
+    """
     console.print("[bold]Initializing dotfiles configuration...")
     console.print("Not implemented yet.")
 
 
 @cli.command()
 @click.argument("repo", required=False)
-@click.option("--verbose", "-v", is_flag=True, help="Show detailed information about backups")
 @click.option(
-    "--latest", "-l", is_flag=True, help="Show only the latest backup for each repository"
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Show detailed information about backups including file counts and types",
+)
+@click.option(
+    "--latest",
+    "-l",
+    is_flag=True,
+    help="Show only the latest backup for each repository and branch",
 )
 def list(repo: Optional[str], verbose: bool = False, latest: bool = False) -> None:
-    """List available backups."""
+    """List available backups.
+
+    REPO is an optional repository name to filter the results (e.g., harmonyhub).
+
+    The list command will:
+    1. Find all backups in the backup directory
+    2. Display them in a table format with repository name, branch, timestamp, and programs
+    3. Sort backups by timestamp with the newest first
+
+    Examples:
+
+      # List all available backups
+      dotfiles list
+
+      # List backups for a specific repository
+      dotfiles list harmonyhub
+
+      # Show only the latest backup for each repository and branch
+      dotfiles list --latest
+
+      # Show detailed information about backups
+      dotfiles list --verbose
+
+      # Combine options
+      dotfiles list harmonyhub --latest --verbose
+    """
     config = Config()
     manager = BackupManager(config)
     backups = manager.list_backups(repo)
