@@ -90,3 +90,10 @@ export/
 
 # Node.js
 node_modules/
+
+# IDE and Editor files
+.cursor/
+.history/
+
+# Backup directories
+backups/
