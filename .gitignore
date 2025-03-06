@@ -87,3 +87,6 @@ config.toml
 
 local-research/
 export/
+
+# Node.js
+node_modules/
