@@ -1,0 +1,106 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+Before diving into the best practices, please note that you may need to adapt the globs depending on your project's specific structure and file types.
+
+---
+name: harmonyhub-client-ws-best-practices.mdc
+description: Best practices for using the Harmony Hub WebSocket client
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+- Use connection pooling to manage multiple WebSocket connections efficiently
+- Implement proper error handling and reconnection logic
+- Utilize the client's event system for real-time updates
+
+---
+name: harmonyhub-discover-best-practices.mdc
+description: Best practices for discovering Harmony Hub devices
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+- Implement periodic discovery to handle dynamic network changes
+- Cache discovered devices to reduce network traffic
+- Use the discovery results to initialize the WebSocket client
+
+---
+name: raycast-api-best-practices.mdc
+description: Best practices for developing Raycast extensions
+globs: **/*.{ts,tsx}
+---
+
+- Use Raycast's built-in UI components for consistent look and feel
+- Implement proper error handling and user feedback
+- Utilize Raycast's preferences system for user customization
+
+---
+name: raycast-utils-best-practices.mdc
+description: Best practices for using Raycast utility functions
+globs: **/*.{ts,tsx}
+---
+
+- Use utility functions to simplify common tasks and improve code readability
+- Implement proper error handling when using utility functions
+- Keep utility functions up-to-date with the latest Raycast API
+
+---
+name: immer-best-practices.mdc
+description: Best practices for using Immer for immutable state management
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+- Use Immer's `produce` function to create new state drafts
+- Implement proper state normalization for complex data structures
+- Utilize Immer's patches for efficient state updates and undo/redo functionality
+
+---
+name: node-machine-id-best-practices.mdc
+description: Best practices for using Node Machine ID for device identification
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+- Use machine ID for device-specific settings and licensing
+- Implement proper error handling for cases where machine ID cannot be retrieved
+- Consider privacy implications and provide user opt-out options
+
+---
+name: uuid-best-practices.mdc
+description: Best practices for using UUID for unique identifiers
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+- Use UUID v4 for generating random, unique identifiers
+- Implement proper UUID validation when receiving or storing UUIDs
+- Consider using UUID v5 for generating deterministic UUIDs based on namespaces
+
+---
+name: ws-best-practices.mdc
+description: Best practices for using the WebSocket library
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+- Implement proper connection management and error handling
+- Use WebSocket events for real-time communication and updates
+- Consider implementing heartbeat mechanisms for long-lived connections
+
+---
+name: xstate-best-practices.mdc
+description: Best practices for using XState for state management
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+- Use XState's visualizer to design and debug state machines
+- Implement proper error handling and state recovery mechanisms
+- Utilize XState's context and actions for managing complex state logic
+
+---
+name: zustand-best-practices.mdc
+description: Best practices for using Zustand for state management
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+- Use Zustand's middleware for persistence and devtools integration
+- Implement proper state normalization for complex data structures
+- Utilize Zustand's `shallow` comparison for performance optimization

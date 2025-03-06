@@ -1,0 +1,161 @@
+---
+description: gmail2bear Python Execution Rules
+globs: **/*.py,pyproject.toml,.pre-commit-config.yaml
+alwaysApply: false
+---
+
+# Gmail2Bear Python Development Rules
+
+<behavior_rules>
+You have one mission: execute *exactly* what is requested.
+
+Produce code that implements precisely what was requested - no additional features, no creative extensions. Follow instructions to the letter.
+
+Confirm your solution addresses every specified requirement, without adding ANYTHING the user didn't ask for. The user's job depends on this — if you add anything they didn't ask for, it's likely they will be fired.
+
+Your value comes from precision and reliability. When in doubt, implement the simplest solution that fulfills all requirements. The fewer lines of code, the better — but obviously ensure you complete the task the user wants you to.
+
+At each step, ask yourself: "Am I adding any functionality or complexity that wasn't explicitly requested?". This will force you to stay on track.
+</behavior_rules>
+
+Never use cat. You cant parse it.
+
+## Text Editing Preferences
+
+When editing files, always use Sublime Text:
+- ✅ `subl {full path to file}` - Use Sublime Text for editing files
+- ❌ `nano {file}` - Don't use nano
+- ❌ `vim {file}` - Don't use vim
+- ❌ `cat > {file}` - Don't use cat for file creation or editing
+
+## Cursor Tools Integration
+
+When I ask you to ask gemini you will run on the command line cursor-tools repo "put in question here".
+When you talk to gemini, you should treat it like a senior engineer, and it will get a complete of our source code.
+
+When I ask you to ask perplexity you will run on the command line cursor-tools web "put question in here"
+When you talk to perplexity, you should treat this like a very smart person who can help you with any question.
+
+### Tool Commands
+
+**Web Search:**
+`cursor-tools web "<your question>"` - Get answers from the web using Perplexity AI (e.g., `cursor-tools web "latest weather in London"`)
+When using web for complex queries suggest writing the output to a file somewhere like local-research/<query summary>.md.
+
+**Repository Context:**
+`cursor-tools repo "<your question>"` - Get context-aware answers about this repository using Google Gemini (e.g., `cursor-tools repo "explain authentication flow"`)
+
+**Documentation Generation:**
+`cursor-tools doc [options]` - Generate comprehensive documentation for this repository (e.g., `cursor-tools doc --output docs.md`)
+When using doc for remote repos suggest writing the output to a file somewhere like local-docs/<repo-name>.md.
+
+**GitHub Information:**
+`cursor-tools github pr [number]` - Get the last 10 PRs, or a specific PR by number (e.g., `cursor-tools github pr 123`)
+`cursor-tools github issue [number]` - Get the last 10 issues, or a specific issue by number (e.g., `cursor-tools github issue 456`)
+
+## Git Operations
+
+1. **Never push to git repositories unless explicitly requested**
+   - ❌ `git push` (without explicit user request)
+   - ❌ `git push origin branch` (without explicit user request)
+   - ✅ `git push` (only when user specifically asks to push)
+
+2. **Git commits are allowed, but pushing requires explicit permission**
+   - ✅ `git add .`
+   - ✅ `git commit -m "message"`
+   - ❌ `git push` (without user permission)
+
+## UV-First Development
+
+When working with the Gmail2Bear project, always follow these rules:
+
+1. **Never call Python programs directly**
+   - ❌ `python src/gmail2bear/cli.py`
+   - ❌ `./src/gmail2bear/cli.py`
+   - ❌ `python -m gmail2bear`
+
+2. **Always use UV for execution**
+   - ✅ `uv run gmail2bear [command]`
+   - ✅ `uv run python -m gmail2bear [command]`
+   - ✅ `uv run gmail2bear tests/`
+
+3. **Always use UV for package management**
+   - ✅ `uv pip install -e .`
+   - ✅ `uv pip install [package]`
+   - ❌ `pip install [package]`
+
+4. **Always use UV for environment management**
+   - ✅ `uv venv create .venv`
+   - ✅ `uv venv run [command]`
+   - ❌ `python -m venv .venv`
+
+## Code Quality Tools
+
+### Linting and Formatting
+
+Always use these tools for code quality:
+
+1. **Ruff** - Primary linter for fast, comprehensive checks
+   - ✅ `uv run ruff check .`
+   - ✅ `uv run ruff format .`
+
+2. **Black** - Code formatter
+   - ✅ `uv run black src/ tests/`
+
+3. **isort** - Import sorter
+   - ✅ `uv run isort src/ tests/`
+
+4. **mypy** - Type checking
+   - ✅ `uv run mypy src/`
+
+### Pre-commit Hooks
+
+Always use pre-commit hooks to ensure code quality before committing:
+
+1. **Install pre-commit hooks**
+   - ✅ `uv run pre-commit install`
+
+2. **Run pre-commit manually**
+   - ✅ `uv run pre-commit run --all-files`
+
+3. **Update pre-commit hooks**
+   - ✅ `uv run pre-commit autoupdate`
+
+## Development Tasks
+```bash
+# Install in development mode
+uv pip install -e ".[dev]"
+
+# Install pre-commit hooks
+uv run pre-commit install
+
+# Run tests
+uv run pytest
+uv run pytest --cov=gmail2bear
+
+# Run linting
+uv run ruff check .
+uv run mypy src/
+
+# Run formatting
+uv run black src/ tests/
+uv run isort src/ tests/
+
+# Run all pre-commit checks
+uv run pre-commit run --all-files
+```
+
+## Rationale
+
+Using UV consistently provides several benefits:
+- Faster dependency resolution and installation
+- Consistent environment management
+- Reproducible builds
+- Better isolation from system Python
+- Improved performance for all Python operations
+
+Using pre-commit hooks and linting tools ensures:
+- Consistent code style across the project
+- Early detection of potential bugs and issues
+- Enforcement of best practices
+- Improved code quality and maintainability
