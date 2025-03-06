@@ -55,15 +55,24 @@ def test_list_backups_empty(backup_manager: BackupManager, temp_dir: Path) -> No
 def test_list_backups(backup_manager: BackupManager, temp_dir: Path) -> None:
     """Test listing backups."""
     # Create test backup structure
-    backup_dir = backup_manager.backup_dir / "testrepo" / "main" / "20240101-000000"
-    backup_dir.mkdir(parents=True)
-    (backup_dir / "cursor").mkdir()
-    (backup_dir / "vscode").mkdir()
-
-    with pytest.MonkeyPatch.context() as mp:
-        mp.chdir(temp_dir)
-        backups = backup_manager.list_backups("testrepo")
-        assert len(backups) == 1
+    repo_name = "test_repo"
+    branch_name = "main"
+    backup_dir = backup_manager.backup_dir / repo_name / branch_name
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = "20250101-120000"
+    backup_path = backup_dir / timestamp
+    backup_path.mkdir(parents=True, exist_ok=True)
+    
+    # Create program directories
+    (backup_path / "cursor").mkdir()
+    (backup_path / "vscode").mkdir()
+    
+    # List backups
+    backups = backup_manager.list_backups()
+    assert len(backups) == 1
+    assert backups[0].name == timestamp
+    assert backups[0].parent.name == branch_name
+    assert backups[0].parent.parent.name == repo_name
 
 
 def test_backup_program(backup_manager: BackupManager, temp_git_repo: Path) -> None:

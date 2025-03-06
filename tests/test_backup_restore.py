@@ -67,7 +67,7 @@ class TestBackupRestore(TestCase):
         shutil.rmtree(self.target_dir)
         shutil.rmtree(self.backup_dir)
 
-    def test_backup(self) -> Path:
+    def test_backup(self) -> None:
         """Test backup functionality."""
         # Create repository
         repo = GitRepository(self.source_dir)
@@ -102,13 +102,15 @@ class TestBackupRestore(TestCase):
         # Check if vscode files were backed up
         self.assertTrue((vscode_backup_dir / ".vscode").exists())
         self.assertTrue((vscode_backup_dir / ".vscode" / "settings.json").exists())
-
-        return latest_backup
+        
+        # Store the latest backup path for other tests to use
+        self.latest_backup = latest_backup
 
     def test_restore(self) -> None:
         """Test restore functionality."""
         # Backup first
-        latest_backup = self.test_backup()
+        self.test_backup()
+        latest_backup = self.latest_backup
 
         # Remove the target files and directories
         if (self.target_dir / ".cursor").exists():
@@ -143,7 +145,8 @@ class TestBackupRestore(TestCase):
     def test_restore_with_modifications(self) -> None:
         """Test restore with modifications."""
         # Backup first
-        latest_backup = self.test_backup()
+        self.test_backup()
+        latest_backup = self.latest_backup
 
         # Create target directories if they don't exist
         (self.target_dir / ".cursor" / "rules").mkdir(parents=True, exist_ok=True)
@@ -208,7 +211,8 @@ class TestBackupRestore(TestCase):
     def test_force_restore(self) -> None:
         """Test force restore."""
         # Backup first
-        latest_backup = self.test_backup()
+        self.test_backup()
+        latest_backup = self.latest_backup
 
         # Create target directories if they don't exist
         (self.target_dir / ".cursor" / "rules").mkdir(parents=True, exist_ok=True)

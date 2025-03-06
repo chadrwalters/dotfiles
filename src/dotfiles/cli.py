@@ -1,7 +1,7 @@
 """Command line interface for dotfiles."""
 
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 
 import click
 from rich.console import Console
@@ -319,8 +319,20 @@ def list(repo: Optional[str], verbose: bool = False, latest: bool = False) -> No
     # Group backups by repository and branch
     repo_branch_backups: Dict[str, Dict[str, List[Path]]] = {}
     for backup in backups:
-        repo_name = backup.parent.parent.name
-        branch_name = backup.parent.name
+        # Structure: backups/[repo_name]/[branch_name]/[timestamp]/
+        # Where repo_name is the repository name (e.g., "harmonyhub")
+        # Branch_name is the Git branch (e.g., "main")
+        # And timestamp is when the backup was made (e.g., "20250226-184209")
+        
+        # Get the path components 
+        # First, get the direct parent directories
+        backup_parent_path = backup.parent        # Branch directory (e.g., main)
+        repo_path = backup_parent_path.parent     # Repository directory (e.g., harmonyhub)
+        
+        # Now extract the names
+        repo_name = repo_path.name                # Repository name (e.g., harmonyhub)
+        branch_name = backup_parent_path.name     # Branch name (e.g., main)
+        timestamp = backup.name                   # Timestamp (e.g., 20250226-184209)
 
         if repo_name not in repo_branch_backups:
             repo_branch_backups[repo_name] = {}
@@ -337,10 +349,11 @@ def list(repo: Optional[str], verbose: bool = False, latest: bool = False) -> No
 
     # Create a table for better formatting
     table = Table(title="Available Backups")
-    table.add_column("Repository", style="cyan")
+    table.add_column("Repository", style="cyan") 
     table.add_column("Branch", style="green")
-    table.add_column("Timestamp", style="yellow")
-    table.add_column("Programs", style="magenta")
+    table.add_column("Backup Date", style="yellow")
+    table.add_column("Contents", style="magenta")
+    table.add_column("Restore Command", style="blue")
 
     # Add rows to the table
     for repo_name, branches in repo_branch_backups.items():
@@ -375,63 +388,91 @@ def list(repo: Optional[str], verbose: bool = False, latest: bool = False) -> No
                     if cursor_dir.exists() and cursor_dir.is_dir():
                         actual_backup_dir = backup
 
-                # Get programs in this backup with file counts
-                program_details = []
-                program_file_types: Dict[str, Set[str]] = {}
-
+                # Look at the directories inside the backup to determine programs
+                program_dirs = []
                 try:
-                    for program_dir in actual_backup_dir.iterdir():
-                        if program_dir.is_dir():
-                            program_name = program_dir.name
-
-                            # Skip nested timestamp directories in harmonyhub ext branch
-                            if (
-                                repo_name == "harmonyhub"
-                                and branch_name == "ext"
-                                and timestamp == "harmonyhub-clean-pr"
-                                and program_name == "20250226-184209"
-                            ):
-                                continue
-
-                            # Count files and directories
-                            file_count = 0
-                            dir_count = 0
-                            file_types = set()
-
-                            for item in program_dir.rglob("*"):
-                                if item.is_file():
-                                    file_count += 1
-                                    # Extract file extension or special file name
-                                    if item.name.startswith("."):
-                                        file_types.add(item.name)
-                                    elif item.suffix:
-                                        file_types.add(item.suffix)
-                                elif item.is_dir() and item != program_dir:
-                                    dir_count += 1
-
-                            program_file_types[program_name] = file_types
-
-                            if verbose:
-                                program_details.append(
-                                    f"{program_name} ({file_count} files, {dir_count} dirs)"
-                                )
-                            else:
-                                # Show program with file types
-                                file_type_str = ", ".join(sorted(file_types)[:3])
-                                if len(file_types) > 3:
-                                    file_type_str += "..."
-                                program_details.append(
-                                    f"{program_name}"
-                                    + (f" ({file_type_str})" if file_types else "")
-                                )
+                    if backup.exists() and backup.is_dir():
+                        program_dirs = [d for d in backup.iterdir() if d.is_dir()]
                 except (PermissionError, FileNotFoundError):
-                    program_details.append("Error reading directory")
+                    pass
+                
+                # Get friendly names for the programs
+                program_details = []
+                
+                # Hard-code the common programs for better readability
+                for program_dir in program_dirs:
+                    program_name = program_dir.name
+                    if program_name == "cursor":
+                        program_details.append("Cursor")
+                    elif program_name == "vscode":
+                        program_details.append("VS Code")
+                    elif program_name == "git":
+                        program_details.append("Git")
+                    else:
+                        # Try to get friendly name from config
+                        program_config = config.get_program_config(program_name)
+                        if program_config and "name" in program_config:
+                            display_name = program_config["name"]
+                            program_details.append(display_name)
+                        else:
+                            program_details.append(program_name.capitalize())
+                
+                # If no programs were found, set it to "Unknown"
+                if not program_details:
+                    program_details = ["Unknown"]
 
+                # Remove unused code
+                
+                # Check the contents of the backup - look for program directories
+                # Scan for program folders inside this timestamp directory
+                programs_in_backup = []
+                try:
+                    if backup.exists() and backup.is_dir():
+                        for content_dir in backup.iterdir():
+                            if content_dir.is_dir():
+                                if content_dir.name == "cursor":
+                                    programs_in_backup.append("Cursor")
+                                elif content_dir.name == "vscode":
+                                    programs_in_backup.append("VS Code")
+                                elif content_dir.name == "git":
+                                    programs_in_backup.append("Git")
+                                elif content_dir.name.startswith("202"):
+                                    # This is another timestamp directory, skip it
+                                    pass
+                                else:
+                                    # Try to get friendly name from config
+                                    program_config = config.get_program_config(content_dir.name)
+                                    if program_config and "name" in program_config:
+                                        display_name = program_config["name"]
+                                        programs_in_backup.append(display_name)
+                                    else:
+                                        programs_in_backup.append(content_dir.name.capitalize())
+                except (PermissionError, FileNotFoundError):
+                    programs_in_backup = ["Unknown"]
+                
+                # If no programs found
+                if not programs_in_backup:
+                    programs_in_backup = ["No content"]
+                
+                # Format timestamp for display (keep as is for now)
+                display_timestamp = timestamp
+                
+                # Join all program names for display
+                display_contents = ", ".join(programs_in_backup)
+                
+                # Create the restore command example
+                restore_cmd = f"dotfiles restore {repo_name} TARGET_DIR --branch {branch_name} --date {timestamp}"
+                
+                # The actual repo_name is different than what's in the path
+                # Use the directory name itself as the repo name
+                actual_repo = repo_name  # e.g., harmonyhub
+                
                 table.add_row(
-                    repo_name,
-                    branch_name,
-                    display_timestamp,
-                    ", ".join(program_details) if program_details else "None",
+                    actual_repo,                # Repository name (e.g. harmonyhub)
+                    branch_name,                # Branch name from the backup path 
+                    display_timestamp,          # Timestamp/date
+                    display_contents,           # Contents of the backup (programs)
+                    restore_cmd                 # Command to restore this backup
                 )
 
     console.print(table)

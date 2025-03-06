@@ -300,10 +300,28 @@ class BackupManager:
 
         # Get all backup directories
         backups = []
-        for path in backup_dir.glob("*/*"):
-            if path.is_dir():
-                backups.append(path)
+        
+        # Structure:
+        # backups/[repo]/[branch]/[timestamp]
+        # We want to list all timestamp directories
+        
+        # If we're filtering by repo
+        if repo:
+            for branch_dir in backup_dir.iterdir():
+                if branch_dir.is_dir():
+                    for timestamp_dir in branch_dir.iterdir():
+                        if timestamp_dir.is_dir():
+                            backups.append(timestamp_dir)
+        else:
+            # List all repos
+            for repo_dir in backup_dir.iterdir():
+                if repo_dir.is_dir():
+                    for branch_dir in repo_dir.iterdir():
+                        if branch_dir.is_dir():
+                            for timestamp_dir in branch_dir.iterdir():
+                                if timestamp_dir.is_dir():
+                                    backups.append(timestamp_dir)
 
-        # Sort backups by timestamp
-        backups.sort(key=lambda x: x.name)
+        # Sort backups by timestamp (newest first)
+        backups.sort(key=lambda x: x.name, reverse=True)
         return backups

@@ -78,4 +78,21 @@ def test_list_command(cli_runner: CliRunner, test_repo: GitRepository) -> None:
     # Then list backups
     result = cli_runner.invoke(cli, ["list"])
     assert result.exit_code == 0
+    
+    # Print the output for debugging
+    print("\nTEST LIST OUTPUT:")
+    print(result.output)
+    
+    # Verify the output has the expected columns - only check for basic columns that we know will be there
+    assert "Repository" in result.output
+    assert "Branch" in result.output
+    assert "Backup Date" in result.output
+    assert "Contents" in result.output
+    
+    # Verify the content of rows - check for the repo name which should be in the output
     assert test_repo.name in result.output
+    
+    # Test the --latest flag
+    result = cli_runner.invoke(cli, ["list", "--latest"])
+    assert result.exit_code == 0
+    assert "Repository" in result.output
