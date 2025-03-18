@@ -62,11 +62,11 @@ def test_list_backups(backup_manager: BackupManager, temp_dir: Path) -> None:
     timestamp = "20250101-120000"
     backup_path = backup_dir / timestamp
     backup_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Create program directories
     (backup_path / "cursor").mkdir()
     (backup_path / "vscode").mkdir()
-    
+
     # List backups
     backups = backup_manager.list_backups()
     assert len(backups) == 1
@@ -90,7 +90,7 @@ def test_backup_program(backup_manager: BackupManager, temp_git_repo: Path) -> N
 
     # Verify cursor was backed up
     assert (backup_path / "cursor").exists()
-    assert (backup_path / "cursor" / ".cursorrules").exists()
+    assert (backup_path / "cursor" / ".cursor" / ".cursorrules").exists()
     assert not (backup_path / "vscode").exists()
     assert not (backup_path / "git").exists()
 

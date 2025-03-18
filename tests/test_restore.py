@@ -144,7 +144,7 @@ def test_check_conflicts(
 
     conflicts = restore_manager.check_conflicts(repo, backup_with_files)
     assert conflicts
-    assert any(".cursorrules" in str(p[1]) for p in conflicts)
+    assert any(".cursor/.cursorrules" in str(p[1]) for p in conflicts)
     assert any(".cursor" in str(p[1]) for p in conflicts)
 
 

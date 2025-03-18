@@ -48,7 +48,14 @@ def cli() -> None:
 @click.option(
     "--dry-run", is_flag=True, help="Show what would be backed up without making any changes"
 )
-def backup(repo_path: Path, programs: bool, branch: Optional[str], dry_run: bool) -> None:
+@click.option(
+    "--zip-export",
+    is_flag=True,
+    help="Export the backup as a zip file in addition to creating the backup directory",
+)
+def backup(
+    repo_path: Path, programs: bool, branch: Optional[str], dry_run: bool, zip_export: bool
+) -> None:
     """Back up program configurations from a repository.
 
     REPO_PATH is the path to the repository to back up (e.g., ~/source/raycast-extensions/extensions/harmonyhub/).
@@ -57,6 +64,7 @@ def backup(repo_path: Path, programs: bool, branch: Optional[str], dry_run: bool
     1. Identify the repository and determine its name
     2. Create a backup directory with the current timestamp
     3. Copy configured program files and directories to the backup
+    4. Optionally create a zip archive of the backup (if --zip-export is used)
 
     By default, all configured programs will be backed up. Use --programs to list available programs.
 
@@ -73,6 +81,9 @@ def backup(repo_path: Path, programs: bool, branch: Optional[str], dry_run: bool
 
       # Show what would be backed up without making changes
       dotfiles backup ~/source/raycast-extensions/extensions/harmonyhub/ --dry-run
+
+      # Create a backup and export it as a zip file
+      dotfiles backup ~/source/raycast-extensions/extensions/harmonyhub/ --zip-export
     """
     try:
         if not repo_path.is_dir():
@@ -91,7 +102,14 @@ def backup(repo_path: Path, programs: bool, branch: Optional[str], dry_run: bool
 
         manager = BackupManager(config)
 
-        if not manager.backup(repo, programs=None, branch=branch, dry_run=dry_run):
+        # Initialize the repository if it doesn't exist
+        if not repo.exists():
+            repo.init()
+
+        # Perform the backup
+        if not manager.backup(
+            repo, programs=None, branch=branch, dry_run=dry_run, zip_export=zip_export
+        ):
             console.print("[red]Error: Failed to back up files")
             raise click.Abort()
     except Exception as e:
@@ -323,16 +341,16 @@ def list(repo: Optional[str], verbose: bool = False, latest: bool = False) -> No
         # Where repo_name is the repository name (e.g., "harmonyhub")
         # Branch_name is the Git branch (e.g., "main")
         # And timestamp is when the backup was made (e.g., "20250226-184209")
-        
-        # Get the path components 
+
+        # Get the path components
         # First, get the direct parent directories
-        backup_parent_path = backup.parent        # Branch directory (e.g., main)
-        repo_path = backup_parent_path.parent     # Repository directory (e.g., harmonyhub)
-        
+        backup_parent_path = backup.parent  # Branch directory (e.g., main)
+        repo_path = backup_parent_path.parent  # Repository directory (e.g., harmonyhub)
+
         # Now extract the names
-        repo_name = repo_path.name                # Repository name (e.g., harmonyhub)
-        branch_name = backup_parent_path.name     # Branch name (e.g., main)
-        timestamp = backup.name                   # Timestamp (e.g., 20250226-184209)
+        repo_name = repo_path.name  # Repository name (e.g., harmonyhub)
+        branch_name = backup_parent_path.name  # Branch name (e.g., main)
+        timestamp = backup.name  # Timestamp (e.g., 20250226-184209)
 
         if repo_name not in repo_branch_backups:
             repo_branch_backups[repo_name] = {}
@@ -349,7 +367,7 @@ def list(repo: Optional[str], verbose: bool = False, latest: bool = False) -> No
 
     # Create a table for better formatting
     table = Table(title="Available Backups")
-    table.add_column("Repository", style="cyan") 
+    table.add_column("Repository", style="cyan")
     table.add_column("Branch", style="green")
     table.add_column("Backup Date", style="yellow")
     table.add_column("Contents", style="magenta")
@@ -395,10 +413,10 @@ def list(repo: Optional[str], verbose: bool = False, latest: bool = False) -> No
                         program_dirs = [d for d in backup.iterdir() if d.is_dir()]
                 except (PermissionError, FileNotFoundError):
                     pass
-                
+
                 # Get friendly names for the programs
                 program_details = []
-                
+
                 # Hard-code the common programs for better readability
                 for program_dir in program_dirs:
                     program_name = program_dir.name
@@ -416,13 +434,13 @@ def list(repo: Optional[str], verbose: bool = False, latest: bool = False) -> No
                             program_details.append(display_name)
                         else:
                             program_details.append(program_name.capitalize())
-                
+
                 # If no programs were found, set it to "Unknown"
                 if not program_details:
                     program_details = ["Unknown"]
 
                 # Remove unused code
-                
+
                 # Check the contents of the backup - look for program directories
                 # Scan for program folders inside this timestamp directory
                 programs_in_backup = []
@@ -449,30 +467,30 @@ def list(repo: Optional[str], verbose: bool = False, latest: bool = False) -> No
                                         programs_in_backup.append(content_dir.name.capitalize())
                 except (PermissionError, FileNotFoundError):
                     programs_in_backup = ["Unknown"]
-                
+
                 # If no programs found
                 if not programs_in_backup:
                     programs_in_backup = ["No content"]
-                
+
                 # Format timestamp for display (keep as is for now)
                 display_timestamp = timestamp
-                
+
                 # Join all program names for display
                 display_contents = ", ".join(programs_in_backup)
-                
+
                 # Create the restore command example
                 restore_cmd = f"dotfiles restore {repo_name} TARGET_DIR --branch {branch_name} --date {timestamp}"
-                
+
                 # The actual repo_name is different than what's in the path
                 # Use the directory name itself as the repo name
                 actual_repo = repo_name  # e.g., harmonyhub
-                
+
                 table.add_row(
-                    actual_repo,                # Repository name (e.g. harmonyhub)
-                    branch_name,                # Branch name from the backup path 
-                    display_timestamp,          # Timestamp/date
-                    display_contents,           # Contents of the backup (programs)
-                    restore_cmd                 # Command to restore this backup
+                    actual_repo,  # Repository name (e.g. harmonyhub)
+                    branch_name,  # Branch name from the backup path
+                    display_timestamp,  # Timestamp/date
+                    display_contents,  # Contents of the backup (programs)
+                    restore_cmd,  # Command to restore this backup
                 )
 
     console.print(table)

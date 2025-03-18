@@ -81,7 +81,7 @@ def test_program_config() -> None:
     cursor_config = config.get_program_config("cursor")
     assert cursor_config is not None
     assert cursor_config["name"] == "Cursor"
-    assert ".cursorrules" in cursor_config["files"]
+    assert ".cursor/.cursorrules" in cursor_config["files"]
     assert ".cursor" in cursor_config["directories"]
 
 

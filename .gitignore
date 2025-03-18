@@ -96,3 +96,7 @@ node_modules/
 .history/
 
 # Backup directories
+backups/
+
+# Repomix output
+.repomix-output.txt

@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
-import yaml
 from rich.console import Console
 
 console = Console()
@@ -14,11 +13,17 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "search_paths": ["~/projects", "~/source"],
     "max_depth": 3,
     "exclude_patterns": ["node_modules", "venv", ".venv", "env", ".env"],
+    "backup_dir": "backups",
     "programs": {
         "cursor": {
             "name": "Cursor",
-            "paths": [".cursorrules", ".cursor/rules/*.mdc", ".cursor/"],
-            "files": [".cursorrules", ".cursor/rules/*.mdc"],
+            "paths": [
+                ".cursor/.cursorrules",
+                ".cursor/rules/*.mdc",
+                ".cursor/",
+                ".cursor/prompts/*.md",
+            ],
+            "files": [".cursor/.cursorrules", ".cursor/rules/*.mdc", ".cursor/prompts/*.md"],
             "directories": [".cursor"],
         },
         "windsurf": {
@@ -50,49 +55,63 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 
 
 class Config:
-    """Configuration class."""
+    """Configuration class for dotfiles."""
 
     def __init__(self) -> None:
         """Initialize configuration."""
-        self.search_paths: List[str] = [
-            str(Path(p).expanduser()) for p in DEFAULT_CONFIG["search_paths"]
-        ]
-        self.max_depth: int = DEFAULT_CONFIG["max_depth"]
-        self.exclude_patterns: List[str] = DEFAULT_CONFIG["exclude_patterns"].copy()
-        self.programs: Dict[str, Dict[str, Any]] = cast(
-            Dict[str, Dict[str, Any]], DEFAULT_CONFIG["programs"].copy()
-        )
+        self.config: Dict[str, Any] = {}
+        self.search_paths: List[str] = []
+        self.max_depth: int = 3
+        self.exclude_patterns: List[str] = []
+        self.cursor_files: List[str] = []
+        self.cursor_directories: List[str] = []
+        self.programs: Dict[str, Dict[str, Any]] = {}
+        self.load_config()
 
-    def load_config(self, config_path: Path) -> None:
+    def load_config(self, config_file: Optional[Path] = None) -> None:
         """Load configuration from file."""
-        if not config_path.exists():
-            return
+        # Start with default configuration
+        self._merge_config(DEFAULT_CONFIG)
 
-        with config_path.open() as f:
-            config = yaml.safe_load(f)
-            if config:
-                self._merge_config(config)
+        # If a config file is provided, load and merge it
+        if config_file is not None:
+            try:
+                import yaml
+
+                with open(config_file, "r") as f:
+                    user_config = yaml.safe_load(f)
+                if user_config:
+                    self._merge_config(user_config)
+            except Exception as e:
+                console.print(f"[red]Error loading config file: {e}[/red]")
 
     def _merge_config(self, config: Dict[str, Any]) -> None:
         """Merge configuration with current configuration."""
         if not isinstance(config, dict):
             raise ValueError("Configuration must be a dictionary")
 
+        # Update the raw config
+        self.config.update(config)
+
+        # Update search paths
         if "search_paths" in config:
             if not isinstance(config["search_paths"], list):
                 raise ValueError("search_paths must be a list")
             self.search_paths = [str(Path(p).expanduser()) for p in config["search_paths"]]
 
+        # Update max depth
         if "max_depth" in config:
             if not isinstance(config["max_depth"], int):
                 raise ValueError("max_depth must be an integer")
             self.max_depth = config["max_depth"]
 
+        # Update exclude patterns
         if "exclude_patterns" in config:
             if not isinstance(config["exclude_patterns"], list):
                 raise ValueError("exclude_patterns must be a list")
             self.exclude_patterns = config["exclude_patterns"]
 
+        # Update programs
         if "programs" in config:
             if not isinstance(config["programs"], dict):
                 raise ValueError("programs must be a dictionary")
@@ -135,6 +154,11 @@ class Config:
                     self.programs[program].update(program_config)
                 else:
                     self.programs[program] = program_config
+
+                # Update cursor-specific attributes if this is the cursor program
+                if program == "cursor":
+                    self.cursor_files = program_config.get("files", [])
+                    self.cursor_directories = program_config.get("directories", [])
 
     def validate(self) -> List[str]:
         """Validate configuration."""
@@ -192,3 +216,40 @@ class Config:
     def get_program_config(self, program: str) -> Optional[Dict[str, Any]]:
         """Get configuration for a specific program."""
         return self.programs.get(program)
+
+    def load_from_dict(self, config_data: Dict[str, Any]) -> None:
+        """Load configuration from a dictionary.
+
+        Args:
+            config_data: Dictionary containing configuration data.
+
+        Example:
+            ```python
+            config = Config()
+            config_data = {
+                "backup_dir": "~/backups",
+                "cursor": {
+                    "files": [".cursor/settings.json"],
+                    "directories": [".cursor/rules"],
+                },
+            }
+            config.load_from_dict(config_data)
+            ```
+        """
+        self.config = config_data
+        if "cursor" in config_data:
+            cursor_config = config_data["cursor"]
+            self.cursor_files = cursor_config.get("files", [])
+            self.cursor_directories = cursor_config.get("directories", [])
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a configuration value.
+
+        Args:
+            key: The configuration key to get.
+            default: The default value to return if the key is not found.
+
+        Returns:
+            The configuration value, or the default if not found.
+        """
+        return self.config.get(key, default)

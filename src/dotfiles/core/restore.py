@@ -42,10 +42,26 @@ class RestoreManager:
         self.config = config
         self.backup_manager = backup_manager
         self.console = Console()
-        self.backup_dir = (
-            Path("test_temp/backups") if "test_temp" in str(Path.cwd()) else Path("backups")
-        )
-        logger.debug("RestoreManager initialized with backup directory: %s", self.backup_dir)
+        self.backup_dir = Path(self.config.get("backup_dir", "backups"))
+        self.logger = logging.getLogger(__name__)
+        self.logger.debug("RestoreManager initialized with backup directory: %s", self.backup_dir)
+
+    def _update_backup_dir(self) -> None:
+        """Update backup directory path based on current working directory."""
+        cwd = Path.cwd()
+        self.logger.debug("Initial backup_dir: %s", self.backup_dir)
+        self.logger.debug("Current working directory: %s", cwd)
+
+        # If we're in a dotfiles repo, use the backup directory from there
+        if (cwd / ".git").exists() and (cwd / "src" / "dotfiles").exists():
+            self.logger.debug("In dotfiles repo, updated backup_dir: %s", cwd / self.backup_dir)
+            self.backup_dir = cwd / self.backup_dir
+        else:
+            # Otherwise, use the backup directory from the config
+            self.backup_dir = Path(self.config.get("backup_dir", "backups"))
+
+        self.logger.debug("Final backup directory: %s", self.backup_dir)
+        self.logger.debug("Checking if backup directory exists: %s", self.backup_dir.exists())
 
     def find_backup(
         self,
@@ -65,40 +81,9 @@ class RestoreManager:
         Returns:
             Path to the backup directory if found, None otherwise.
         """
-        # Ensure we're using an absolute path for the backup directory
-        backup_dir = self.backup_dir
-        logger.debug("Initial backup_dir: %s", backup_dir)
-        logger.debug("Current working directory: %s", Path.cwd())
+        self._update_backup_dir()
 
-        if not backup_dir.is_absolute():
-            # If we're in the dotfiles repository, use the relative path
-            if Path.cwd().name == "dotfiles":
-                backup_dir = Path.cwd() / backup_dir
-                logger.debug("In dotfiles repo, updated backup_dir: %s", backup_dir)
-            else:
-                # Try to find the dotfiles repository
-                dotfiles_path = Path.home() / "source" / "dotfiles"
-                if dotfiles_path.exists():
-                    backup_dir = dotfiles_path / backup_dir
-                    logger.debug(
-                        "Found dotfiles repo at %s, updated backup_dir: %s",
-                        dotfiles_path,
-                        backup_dir,
-                    )
-                else:
-                    # Fall back to the current directory
-                    backup_dir = Path.cwd() / backup_dir
-                    logger.debug("Using current directory, updated backup_dir: %s", backup_dir)
-
-        logger.debug("Final backup directory: %s", backup_dir)
-        logger.debug("Checking if backup directory exists: %s", backup_dir.exists())
-
-        if not backup_dir.exists():
-            logger.warning("Backup directory %s does not exist", backup_dir)
-            self.console.print(f"[yellow]Backup directory {backup_dir} does not exist[/yellow]")
-            return None
-
-        repo_dir = backup_dir / repo_name
+        repo_dir = self.backup_dir / repo_name
         logger.debug("Repository directory: %s", repo_dir)
         logger.debug("Checking if repository directory exists: %s", repo_dir.exists())
 
@@ -218,16 +203,120 @@ class RestoreManager:
                 if target_path.exists():
                     # Get the corresponding backup path
                     rel_path = target_path.relative_to(repo.path)
-                    backup_file = program_backup / rel_path.name
+                    backup_file = program_backup / rel_path
                     if backup_file.exists():
                         conflicts.add((target_path, backup_file))
 
         return conflicts
 
+    def _restore_file(
+        self,
+        src_file: Path,
+        target_path: Path,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> bool:
+        """Restore a single file.
+
+        Args:
+            src_file: Source file to restore from.
+            target_path: Target path to restore to.
+            force: Whether to force restore over existing files.
+            dry_run: Whether to perform a dry run.
+
+        Returns:
+            True if restore was successful, False otherwise.
+        """
+        if dry_run:
+            logger.debug("Would restore file: %s -> %s", src_file, target_path)
+            self.console.print(f"Would restore file: {src_file} -> {target_path}")
+            return True
+
+        try:
+            if target_path.exists():
+                if not force:
+                    logger.debug(
+                        "Skipping existing file: %s (use --force to overwrite)", target_path
+                    )
+                    self.console.print(
+                        f"[yellow]Skipping existing file: {target_path} (use --force to overwrite)[/yellow]"
+                    )
+                    return False
+                else:
+                    # If force is True, remove the existing file
+                    target_path.unlink()
+
+            # Create parent directories if they don't exist
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Copy the file with metadata
+            shutil.copy2(src_file, target_path)
+            logger.info("Successfully restored file: %s", target_path)
+            return True
+        except Exception as e:
+            logger.error("Error restoring file %s: %s", target_path, e)
+            self.console.print(f"[red]Error restoring file {target_path}: {e}[/red]")
+            return False
+
+    def _restore_directory(
+        self,
+        src_dir: Path,
+        dst_dir: Path,
+        force: bool = False,
+        dry_run: bool = False,
+        restored_files: Optional[Set[Path]] = None,
+    ) -> bool:
+        """Restore a directory and its contents.
+
+        Args:
+            src_dir: Source directory to restore from.
+            dst_dir: Target directory to restore to.
+            force: Whether to force restore files.
+            dry_run: Whether to perform a dry run.
+            restored_files: Set of already restored files to avoid duplicates.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        if dry_run:
+            logger.debug("Would restore directory: %s -> %s", src_dir, dst_dir)
+            self.console.print(f"Would restore directory: {src_dir} -> {dst_dir}")
+            return True
+
+        try:
+            # Create target directory if it doesn't exist
+            dst_dir.mkdir(parents=True, exist_ok=True)
+
+            # Restore files in the directory recursively
+            for src_path in src_dir.rglob("*"):
+                if src_path.is_file():
+                    # Get the relative path from the source directory
+                    rel_path = src_path.relative_to(src_dir)
+                    # Create the target path with the same directory structure
+                    dst_path = dst_dir / rel_path
+                    # Skip if we've already restored this file
+                    if restored_files is not None and dst_path in restored_files:
+                        logger.debug("Skipping already restored file: %s", dst_path)
+                        continue
+                    # Create parent directories if they don't exist
+                    dst_path.parent.mkdir(parents=True, exist_ok=True)
+                    # Restore the file
+                    if not self._restore_file(src_path, dst_path, force, dry_run):
+                        return False
+                    if restored_files is not None:
+                        restored_files.add(dst_path)
+
+            logger.info("Successfully restored directory: %s", dst_dir)
+            return True
+        except Exception as e:
+            logger.error("Error restoring directory %s: %s", dst_dir, e)
+            self.console.print(f"[red]Error restoring directory {dst_dir}: {e}")
+            return False
+
     def restore_program(
         self,
         program: str,
-        source_dir: Path,
+        program_source: Path,
         target_dir: Path,
         force: bool = False,
         dry_run: bool = False,
@@ -236,137 +325,62 @@ class RestoreManager:
 
         Args:
             program: Program to restore.
-            source_dir: Source directory to restore from (backup directory).
-            target_dir: Target directory to restore to.
-            force: Whether to force restore over existing files.
+            program_source: Path to backup directory.
+            target_dir: Path to target directory.
+            force: Whether to force overwrite existing files.
             dry_run: Whether to perform a dry run.
 
         Returns:
-            True if restore was successful, False otherwise.
+            True if successful, False otherwise.
         """
-        if program not in self.config.programs:
-            logger.warning("Program '%s' not found in configuration", program)
-            self.console.print(f"[yellow]Program '{program}' not found in configuration[/yellow]")
-            return False
-
-        # The program directory is inside the source_dir (backup directory)
-        program_dir = source_dir / program
-        logger.debug("Looking for program directory at: %s", program_dir)
-
-        if not program_dir.exists():
-            logger.warning("Program directory '%s' not found in backup", program_dir)
-            self.console.print(
-                f"[yellow]Program directory '{program}' not found in backup at {source_dir}[/yellow]"
-            )
-            return False
-
-        # Get program configuration
+        success = True
+        restored_files = set()
         program_config = self.config.get_program_config(program)
-        if not program_config:
-            logger.warning("No configuration found for program '%s'", program)
-            self.console.print(f"[yellow]No configuration found for program '{program}'[/yellow]")
-            return False
 
-        files_restored = False
-        logger.debug("Restoring program '%s' from %s to %s", program, program_dir, target_dir)
-
-        # Clean up existing files if force is True
-        if force and not dry_run:
-            logger.debug("Force flag is set, cleaning up existing files for program '%s'", program)
-            # First clean up directories
-            for dir_pattern in program_config.get("directories", []):
-                dir_path = target_dir / dir_pattern
-                if dir_path.exists():
-                    logger.debug("Removing directory: %s", dir_path)
-                    shutil.rmtree(dir_path)
-
-            # Then clean up files
+        if program_config:
+            # First restore files
             for file_pattern in program_config.get("files", []):
-                file_path = target_dir / file_pattern
-                if file_path.exists():
-                    logger.debug("Removing file: %s", file_path)
-                    file_path.unlink()
+                # Get the source file path from the backup
+                src_file = program_source / program / file_pattern
+                # Create the target file path preserving the directory structure
+                dst_file = target_dir / file_pattern
 
-        # Restore files
-        for file_pattern in program_config.get("files", []):
-            src_path = program_dir / Path(file_pattern).name
-            logger.debug("Checking for file: %s", src_path)
-            if src_path.exists() and src_path.is_file():
-                dst_path = target_dir / file_pattern
-                logger.debug("Restoring file: %s -> %s", src_path, dst_path)
-                if dst_path.exists() and not force:
-                    logger.warning(
-                        "Skipping existing file: %s (use --force to overwrite)", dst_path
-                    )
-                    self.console.print(
-                        f"[yellow]Skipping existing file: {dst_path.relative_to(target_dir)} (use --force to overwrite)[/yellow]"
-                    )
-                    continue
-                if dry_run:
-                    self.console.print(
-                        f"[blue]Would restore: {src_path.relative_to(source_dir)} -> {dst_path.relative_to(target_dir)}[/blue]"
-                    )
-                else:
-                    dst_path.parent.mkdir(parents=True, exist_ok=True)
-                    try:
-                        shutil.copy2(src_path, dst_path)
-                        logger.info("Successfully restored file: %s", dst_path)
+                if src_file.exists():
+                    # Create parent directories if they don't exist
+                    dst_file.parent.mkdir(parents=True, exist_ok=True)
+                    if not self._restore_file(src_file, dst_file, force, dry_run):
+                        success = False
+                    else:
+                        restored_files.add(dst_file)
                         self.console.print(
-                            f"[green]Restored: {src_path.relative_to(source_dir)} -> {dst_path.relative_to(target_dir)}[/green]"
-                        )
-                        files_restored = True
-                    except Exception as e:
-                        logger.error("Failed to restore file %s: %s", dst_path, e)
-                        self.console.print(f"[red]Failed to restore {dst_path}: {e}[/red]")
-
-        # Restore directories
-        for dir_pattern in program_config.get("directories", []):
-            src_path = program_dir / Path(dir_pattern).name
-            logger.debug("Checking for directory: %s", src_path)
-            if src_path.exists() and src_path.is_dir():
-                dst_path = target_dir / dir_pattern
-                logger.debug("Restoring directory: %s -> %s", src_path, dst_path)
-                if dst_path.exists() and not force:
-                    logger.warning(
-                        "Skipping existing directory: %s (use --force to overwrite)", dst_path
-                    )
-                    self.console.print(
-                        f"[yellow]Skipping existing directory: {dst_path.relative_to(target_dir)} (use --force to overwrite)[/yellow]"
-                    )
-                    continue
-                if dry_run:
-                    self.console.print(
-                        f"[blue]Would restore directory: {src_path.relative_to(source_dir)} -> {dst_path.relative_to(target_dir)}[/blue]"
-                    )
-                else:
-                    if dst_path.exists():
-                        logger.debug("Removing existing directory: %s", dst_path)
-                        shutil.rmtree(dst_path)
-                    dst_path.parent.mkdir(parents=True, exist_ok=True)
-                    try:
-                        shutil.copytree(src_path, dst_path)
-                        logger.info("Successfully restored directory: %s", dst_path)
-                        self.console.print(
-                            f"[green]Restored directory: {src_path.relative_to(source_dir)} -> {dst_path.relative_to(target_dir)}[/green]"
-                        )
-                        files_restored = True
-                    except Exception as e:
-                        logger.error("Failed to restore directory %s: %s", dst_path, e)
-                        self.console.print(
-                            f"[red]Failed to restore directory {dst_path}: {e}[/red]"
+                            f"[green]Restored: {program}/{file_pattern} -> {file_pattern}"
                         )
 
-        if files_restored:
-            logger.info("Successfully restored program '%s'", program)
+            # Then restore directories
+            for dir_pattern in program_config.get("directories", []):
+                # Get the source directory path from the backup
+                src_dir = program_source / program / dir_pattern
+                # Create the target directory path preserving the directory structure
+                dst_dir = target_dir / dir_pattern
+
+                if src_dir.exists():
+                    # Create parent directories if they don't exist
+                    dst_dir.parent.mkdir(parents=True, exist_ok=True)
+                    if not self._restore_directory(
+                        src_dir, dst_dir, force, dry_run, restored_files
+                    ):
+                        success = False
+                    else:
+                        self.console.print(
+                            f"[green]Restored directory: {program}/{dir_pattern} -> {dir_pattern}"
+                        )
+
+        if success:
+            self.console.print(f"[green]Successfully restored program '{program}'")
         else:
-            logger.warning("No files were restored for program '%s'", program)
+            self.console.print(f"[red]Failed to restore program '{program}'")
 
-        # For dry runs, we should return True even if no files were restored
-        # since we're just showing what would be restored
-        if dry_run:
-            return True
-
-        return files_restored
+        return success
 
     def validate_restore(
         self,
@@ -374,19 +388,7 @@ class RestoreManager:
         target_dir: Path,
         programs: List[str],
     ) -> Tuple[bool, Dict[str, Dict[str, List[Tuple[Path, Optional[str]]]]]]:
-        """Validate that files were restored correctly.
-
-        Args:
-            backup_path: Path to backup directory.
-            target_dir: Path to target directory.
-            programs: List of programs to validate.
-
-        Returns:
-            Tuple of (success, validation_results).
-            validation_results is a dict with program names as keys and a dict with
-            'success' and 'failed' lists of paths as values. Failed entries include
-            the reason for failure.
-        """
+        """Validate that files were restored correctly."""
         logger.info("Validating restore from %s to %s", backup_path, target_dir)
         validation_results: Dict[str, Dict[str, List[Tuple[Path, Optional[str]]]]] = {}
         all_valid = True
@@ -407,7 +409,8 @@ class RestoreManager:
 
             # Validate files
             for file_pattern in program_config.get("files", []):
-                src_path = program_dir / Path(file_pattern).name
+                # Use the full path for both source and destination
+                src_path = program_dir / file_pattern
                 dst_path = target_dir / file_pattern
 
                 # Check if the file exists in the backup
@@ -452,7 +455,7 @@ class RestoreManager:
 
             # Validate directories
             for dir_pattern in program_config.get("directories", []):
-                src_path = program_dir / Path(dir_pattern).name
+                src_path = program_dir / dir_pattern
                 dst_path = target_dir / dir_pattern
 
                 # Check if the directory exists in the backup
@@ -460,6 +463,7 @@ class RestoreManager:
                     # If the directory doesn't exist in the backup but exists in the target,
                     # it's not a validation error (it wasn't restored)
                     if dst_path.exists():
+                        # This is a directory that was manually created or not removed during restore
                         logger.warning("Directory exists in target but not in backup: %s", dst_path)
                     continue
 

@@ -1,4 +1,9 @@
-"""Backup functionality for dotfiles."""
+"""Backup functionality for Cursor IDE configuration files.
+
+This module provides functionality for backing up Cursor IDE configuration files
+from Git repositories. It handles backing up specific files and directories
+defined in the configuration, with support for glob patterns and exclusions.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ from rich.console import Console
 
 from .config import Config
 from .repository import GitRepository
+from .zip_export import ZipExporter
 
 console = Console()
 
@@ -20,10 +26,30 @@ EXCLUDED_FILES = [".DS_Store", "Thumbs.db", "desktop.ini", "__pycache__"]
 
 
 class BackupManager:
-    """Manages backups of program configurations."""
+    """Manages backups of Cursor IDE configuration files.
+
+    This class handles the backup process for Cursor IDE configuration files,
+    including:
+    - Determining which files and directories to back up
+    - Creating timestamped backup directories
+    - Copying files while preserving metadata
+    - Handling branch-specific backups
+    - Supporting dry-run mode for backup validation
+
+    Attributes:
+        config (Config): Configuration object containing backup settings
+        console (Console): Rich console for output formatting
+        backup_dir (Path): Root directory for storing backups
+    """
 
     def __init__(self, config: Config, console: Optional[Console] = None):
-        """Initialize backup manager."""
+        """Initialize the backup manager.
+
+        Args:
+            config (Config): Configuration object containing backup settings
+            console (Optional[Console]): Rich console for output. If None, creates
+                                      a new console.
+        """
         self.config = config
         self.console = console or Console()
         self.backup_dir = (
@@ -32,7 +58,21 @@ class BackupManager:
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
     def backup_path(self, repo: GitRepository) -> Path:
-        """Get backup path for repository."""
+        """Get the backup path for a repository.
+
+        Creates a timestamped backup directory path under the repository's
+        branch-specific backup location.
+
+        Args:
+            repo (GitRepository): Repository to get backup path for
+
+        Returns:
+            Path: Path where backup will be stored, formatted as:
+                 backups/<repo_name>/<branch_name>/<timestamp>
+
+        Note:
+            In test mode, existing backups for the branch are cleaned up.
+        """
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         branch_path = self.backup_dir / repo.name / repo.get_current_branch()
 
@@ -41,60 +81,65 @@ class BackupManager:
             shutil.rmtree(branch_path)
 
         path = branch_path / timestamp
-        path.mkdir(parents=True, exist_ok=True)
         return path
 
     def get_program_paths(self, repo: GitRepository, program: str) -> Set[Path]:
-        """Get all paths that would be backed up for a program.
+        """Get all paths that would be backed up for Cursor IDE.
+
+        Identifies all files and directories that should be backed up based on
+        the configuration, supporting both exact paths and glob patterns.
 
         Args:
-            repo: Git repository to get paths for.
-            program: Program to get paths for.
+            repo (GitRepository): Repository to get paths from
+            program (str): Program identifier (should be 'cursor')
 
         Returns:
-            Set of paths to back up.
+            Set[Path]: Set of paths to back up, including both files and
+                      directories that exist and have content
+
+        Note:
+            - Files in EXCLUDED_FILES are skipped
+            - Empty files and directories are excluded
+            - Glob patterns are supported for both files and directories
         """
-        paths = set()
+        paths: Set[Path] = set()
         program_config = self.config.get_program_config(program)
         if not program_config:
-            self.console.print(f"[yellow]Warning: No configuration found for program '{program}'")
             return paths
 
-        # Get paths to backup
-        files = program_config.get("files", [])
-        directories = program_config.get("directories", [])
-
-        # Add file paths
-        for file_pattern in files:
-            # Handle glob patterns
-            if "*" in file_pattern:
-                pattern = str(repo.path / file_pattern)
-                for path in glob.glob(pattern, recursive=True):
-                    path = Path(path)
-                    if path.is_file() and path.exists() and path.stat().st_size > 0:
-                        # Skip excluded files
+        for pattern in program_config.get("paths", []):
+            pattern_path = Path(pattern)
+            if "*" in str(pattern_path):
+                # Handle glob patterns
+                for matched_path in glob.glob(str(repo.path / pattern_path)):
+                    path = Path(matched_path)
+                    if path.exists():
+                        if path.is_file() and path.stat().st_size > 0:
+                            if path.name not in EXCLUDED_FILES:
+                                paths.add(path)
+                        elif path.is_dir():
+                            for file_path in path.rglob("*"):
+                                if (
+                                    file_path.is_file()
+                                    and file_path.stat().st_size > 0
+                                    and file_path.name not in EXCLUDED_FILES
+                                ):
+                                    paths.add(file_path)
+            else:
+                # Handle exact paths
+                path = repo.path / pattern_path
+                if path.exists():
+                    if path.is_file() and path.stat().st_size > 0:
                         if path.name not in EXCLUDED_FILES:
                             paths.add(path)
-            else:
-                file_path = repo.path / file_pattern
-                if file_path.is_file() and file_path.exists() and file_path.stat().st_size > 0:
-                    # Skip excluded files
-                    if file_path.name not in EXCLUDED_FILES:
-                        paths.add(file_path)
-
-        # Add directory paths
-        for dir_pattern in directories:
-            # Handle glob patterns
-            if "*" in dir_pattern:
-                pattern = str(repo.path / dir_pattern)
-                for path in glob.glob(pattern, recursive=True):
-                    path = Path(path)
-                    if path.is_dir() and path.exists() and any(path.iterdir()):
-                        paths.add(path)
-            else:
-                dir_path = repo.path / dir_pattern
-                if dir_path.is_dir() and dir_path.exists() and any(dir_path.iterdir()):
-                    paths.add(dir_path)
+                    elif path.is_dir():
+                        for file_path in path.rglob("*"):
+                            if (
+                                file_path.is_file()
+                                and file_path.stat().st_size > 0
+                                and file_path.name not in EXCLUDED_FILES
+                            ):
+                                paths.add(file_path)
 
         return paths
 
@@ -105,84 +150,54 @@ class BackupManager:
         backup_path: Path,
         dry_run: bool = False,
     ) -> Tuple[bool, List[Path]]:
-        """Backup program configurations.
+        """Backup Cursor IDE configuration files.
+
+        Copies all configured Cursor IDE files and directories to the backup
+        location, preserving their structure and metadata.
+
+        Args:
+            repo (GitRepository): Repository to backup from
+            program (str): Program identifier (should be 'cursor')
+            backup_path (Path): Base path for the backup
+            dry_run (bool): If True, only show what would be backed up
 
         Returns:
-            Tuple of (success, list of backed up paths)
+            Tuple[bool, List[Path]]: (success, list of backed up paths)
+                - success: True if any files were backed up
+                - backed_up_paths: List of paths that were backed up
+
+        Note:
+            - Directories are copied recursively
+            - File metadata is preserved using shutil.copy2
+            - Empty files and directories are skipped
+            - In dry-run mode, no files are actually copied
         """
-        paths = self.get_program_paths(repo, program)
-        if not paths:
-            self.console.print(f"[yellow]No files found for program '{program}' in {repo.path}")
+        source_paths = self.get_program_paths(repo, program)
+        if not source_paths:
+            self.console.print(f"[yellow]No files found to backup for program '{program}'")
             return False, []
 
-        # Check if any of the paths actually exist and have content
-        existing_paths = [
-            p
-            for p in paths
-            if p.exists()
-            and (p.is_file() and p.stat().st_size > 0 or p.is_dir() and any(p.iterdir()))
-        ]
-        if not existing_paths:
-            self.console.print(
-                f"[yellow]No valid files found for program '{program}' in {repo.path}"
-            )
-            return False, []
+        backed_up_paths: List[Path] = []
+        for path in sorted(list(source_paths)):
+            if dry_run:
+                self.console.print(f"[blue]Would backup: {path}")
+                backed_up_paths.append(path)
+                continue
 
-        program_backup_path = backup_path / program
-        if not dry_run:
-            program_backup_path.mkdir(parents=True, exist_ok=True)
+            # Create destination path
+            rel_path = path.relative_to(repo.path)
+            dst_path = backup_path / rel_path
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
 
-        backed_up = False
-        backed_up_paths = []
+            # Copy file
+            try:
+                shutil.copy2(path, dst_path)
+                backed_up_paths.append(path)
+                self.console.print(f"[green]Backed up: {path}")
+            except Exception as e:
+                self.console.print(f"[red]Error backing up {path}: {e}")
 
-        try:
-            # Backup files and directories
-            for src_path in sorted(existing_paths):
-                # Get path relative to repo root
-                rel_path = src_path.relative_to(repo.path)
-                dst_path = program_backup_path / rel_path.name
-
-                if dry_run:
-                    self.console.print(
-                        f"[blue]Would backup: {rel_path} -> {dst_path.relative_to(self.backup_dir)}"
-                    )
-                else:
-                    if src_path.is_dir():
-                        if dst_path.exists():
-                            shutil.rmtree(dst_path)
-                        dst_path.parent.mkdir(parents=True, exist_ok=True)
-
-                        # Copy directory but exclude unwanted files
-                        self._copy_directory_filtered(src_path, dst_path)
-                        self.console.print(f"[green]Backed up directory: {rel_path}")
-                    else:
-                        dst_path.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(src_path, dst_path)
-                        self.console.print(f"[green]Backed up file: {rel_path}")
-
-                backed_up_paths.append(src_path)
-                backed_up = True
-
-        except Exception as e:
-            self.console.print(f"[red]Error backing up {program}: {e}")
-            return False, []
-
-        return backed_up, backed_up_paths
-
-    def _copy_directory_filtered(self, src_dir: Path, dst_dir: Path) -> None:
-        """Copy directory but exclude unwanted files."""
-        # Create destination directory if it doesn't exist
-        dst_dir.mkdir(parents=True, exist_ok=True)
-
-        # Copy all files and directories, excluding unwanted files
-        for item in src_dir.iterdir():
-            if item.is_file():
-                # Skip excluded files
-                if item.name not in EXCLUDED_FILES:
-                    shutil.copy2(item, dst_dir / item.name)
-            elif item.is_dir():
-                # Recursively copy subdirectories
-                self._copy_directory_filtered(item, dst_dir / item.name)
+        return bool(backed_up_paths), backed_up_paths
 
     def backup(
         self,
@@ -190,8 +205,39 @@ class BackupManager:
         programs: Optional[List[str]] = None,
         branch: Optional[str] = None,
         dry_run: bool = False,
+        zip_export: bool = False,
     ) -> bool:
-        """Backup configured files from source directory."""
+        """Backup Cursor IDE configurations from a repository.
+
+        Main entry point for backing up Cursor IDE configuration files. Handles
+        the entire backup process including branch management and validation.
+
+        Args:
+            repo (GitRepository | Path): Repository or path to backup from
+            programs (Optional[List[str]]): List of programs to backup. If None,
+                                          backs up all configured programs
+            branch (Optional[str]): Branch to backup from. If provided, switches
+                                  to this branch before backup
+            dry_run (bool): If True, only show what would be backed up
+            zip_export (bool): If True, also create a zip archive of the backup
+
+        Returns:
+            bool: True if any files were backed up successfully
+
+        Raises:
+            ValueError: If source directory doesn't exist or isn't a directory
+
+        Example:
+            ```python
+            manager = BackupManager(config)
+            success = manager.backup(
+                repo="/path/to/repo",
+                branch="main",
+                dry_run=True,
+                zip_export=True
+            )
+            ```
+        """
         if isinstance(repo, Path):
             if not repo.exists():
                 raise ValueError(f"Source directory {repo} does not exist")
@@ -224,45 +270,59 @@ class BackupManager:
         else:
             self.console.print(f"[bold]Programs to backup: {', '.join(programs)}")
 
-        # Create backup directory
+        # Get backup path but don't create it in dry run mode
         backup_path = self.backup_path(repo)
         self.console.print(f"[bold]Backup path: {backup_path}")
 
+        # Create backup directory only if not in dry run mode
+        if not dry_run:
+            backup_path.mkdir(parents=True, exist_ok=True)
+
         backed_up = False
-        backup_summary: Dict[str, List[Path]] = {}
+        backup_summary: Dict[str, Set[Path]] = {}
 
         # Backup each program
         for program in programs:
-            self.console.print(f"[bold]Processing program: {program}")
-            with self.console.status(f"Backing up {program} configurations..."):
-                success, backed_up_paths = self.backup_program(repo, program, backup_path, dry_run)
-                if success:
-                    backed_up = True
-                    backup_summary[program] = backed_up_paths
+            success, backed_up_paths = self.backup_program(repo, program, backup_path, dry_run)
+            if success:
+                backed_up = True
+                backup_summary[program] = set(backed_up_paths)
 
-        # Clean up empty backup directory if nothing was backed up
         if not backed_up:
             self.console.print("[yellow]Warning: No configurations were backed up")
-            if not dry_run and backup_path.exists():
+            if not dry_run:
+                # Clean up empty backup directory
                 shutil.rmtree(backup_path)
+            # For dry runs, return True if any program found files to back up
+            if dry_run:
+                for program in programs:
+                    paths = self.get_program_paths(repo, program)
+                    if paths:
+                        return True
             return False
 
-        if dry_run:
-            self.console.print("[yellow]Dry run completed. No files were backed up.")
-            if backup_path.exists():
-                shutil.rmtree(backup_path)
-        else:
-            self.console.print(f"[green]Backup created at {backup_path}")
-
-            # Print summary
-            self.console.print("\n[bold]Backup Summary:")
+        if not dry_run:
+            self.console.print(f"\nBackup created at {backup_path}\n")
+            self.console.print("Backup Summary:")
             for program, paths in backup_summary.items():
-                self.console.print(f"[bold]{program}:")
+                self.console.print(f"{program}:")
                 for path in paths:
-                    rel_path = path.relative_to(repo.path)
-                    self.console.print(f"  - {rel_path}")
+                    self.console.print(f"  - {path.relative_to(repo.path)}")
 
-        return backed_up
+            # Create zip archive if requested
+            if zip_export:
+                zip_path = backup_path.with_suffix(".zip")
+                self.console.print(f"\n[bold]Creating zip archive: {zip_path}")
+                try:
+                    exporter = ZipExporter(str(backup_path), str(zip_path))
+                    exporter.export()
+                    self.console.print(f"[green]Successfully created zip archive: {zip_path}")
+                except Exception as e:
+                    self.console.print(f"[red]Error creating zip archive: {e}")
+                    # Don't fail the backup if zip creation fails
+                    self.console.print("[yellow]Backup was successful but zip creation failed")
+
+        return True
 
     def list_backups(self, repo: Optional[str] = None) -> List[Path]:
         """List available backups.
@@ -300,11 +360,11 @@ class BackupManager:
 
         # Get all backup directories
         backups = []
-        
+
         # Structure:
         # backups/[repo]/[branch]/[timestamp]
         # We want to list all timestamp directories
-        
+
         # If we're filtering by repo
         if repo:
             for branch_dir in backup_dir.iterdir():

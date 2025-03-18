@@ -1,6 +1,6 @@
-# Development Dotfiles Manager
+# Cursor Development Dotfiles Manager
 
-A specialized dotfiles management system for maintaining consistent configurations across multiple development repositories. This tool helps you keep your development environment consistent by easily backing up and restoring configuration files between different project repositories.
+A specialized dotfiles management system focused exclusively on managing Cursor IDE configurations. This tool helps you maintain consistent Cursor development environments by easily backing up and restoring your `.cursor` directory and related configuration files across different projects.
 
 ## Quick Start
 
@@ -24,14 +24,17 @@ uv pip install -e ".[dev]"
 # Run the dotfiles command
 dotfiles --help
 
-# Backup your configurations
+# Backup your Cursor configurations
 dotfiles backup ~/projects/myrepo
 
 # List available backups
 dotfiles list
 
-# Restore configurations (automatically uses the latest backup)
+# Restore Cursor configurations
 dotfiles restore /path/to/target/directory
+
+# Export configurations to a zip file (new feature)
+dotfiles backup ~/projects/myrepo --zip-export
 ```
 
 ## Development Setup
@@ -82,24 +85,21 @@ dotfiles restore /path/to/target/directory
 # List available backups
 dotfiles list [REPO] [--verbose] [--latest]
 
-# Backup configurations
-dotfiles backup REPO_PATH [--programs] [--branch BRANCH] [--dry-run]
+# Backup Cursor configurations
+dotfiles backup REPO_PATH [--branch BRANCH] [--dry-run]
 
-# Restore configurations
+# Restore Cursor configurations
 dotfiles restore TARGET_DIR [BACKUP_DIR] [--force] [--dry-run]
 
-# Wipe configurations
-dotfiles wipe REPO_PATH [--programs] [--force] [--dry-run]
+# Wipe Cursor configurations
+dotfiles wipe REPO_PATH [--force] [--dry-run]
 ```
 
 ### Backup Operations
 
 ```bash
-# Backup all configurations from a repository
+# Backup Cursor configurations from a repository
 dotfiles backup ~/projects/myrepo
-
-# List available programs instead of backing up
-dotfiles backup ~/projects/myrepo --programs
 
 # Backup from a specific branch
 dotfiles backup ~/projects/myrepo --branch feature-branch
@@ -148,91 +148,32 @@ dotfiles list --latest
 
 ## Features
 
-- **Automatic Backup Selection**: When restoring, the tool automatically finds and uses the latest backup if no specific backup is provided.
-- **Backup Validation**: After restoring files, the tool validates that all files were restored correctly.
-- **Branch-Specific Backups**: Create and restore backups for specific Git branches.
-- **Dry Run Mode**: Preview what would be backed up or restored without making any changes.
-- **Detailed Reporting**: Get comprehensive information about your backups and restore operations.
-- **Force Mode**: Overwrite existing files when restoring.
-
-## Detailed Command Reference
-
-### Restore Command
-
-The restore command allows you to restore configurations from backups to a target directory:
-
-```bash
-dotfiles restore [REPO_NAME] [TARGET_DIR] [--date DATE] [--branch BRANCH] [--latest] [--force] [--dry-run]
-```
-
-**Arguments:**
-- `REPO_NAME` (optional): The name of the repository to restore from. If not specified, will try to determine it from the target directory or current directory.
-- `TARGET_DIR` (optional): The directory to restore configurations to. If not specified, will use the current directory.
-
-**Options:**
-- `--date`: Date to restore from (format: YYYYMMDD or YYYYMMDD-HHMMSS).
-- `--branch`: Branch to restore from.
-- `--latest`: Use the latest backup regardless of date.
-- `--force`: Force restore over existing files.
-- `--dry-run`: Show what would be restored without making any changes.
-
-**Examples:**
-
-1. Restore latest backup for the current directory:
-   ```bash
-   dotfiles restore
-   ```
-
-2. Restore from a specific repository to current directory:
-   ```bash
-   dotfiles restore cursor-tools
-   ```
-
-3. Restore from a specific repository to a different directory:
-   ```bash
-   dotfiles restore cursor-tools /tmp/test-restore
-   ```
-
-4. Restore from "main" branch:
-   ```bash
-   dotfiles restore cursor-tools --branch main
-   ```
-
-5. Restore from a specific date:
-   ```bash
-   dotfiles restore cursor-tools --date 20250226
-   ```
-
-6. Restore latest backup, ignoring date and branch parameters if any:
-   ```bash
-   dotfiles restore cursor-tools --latest
-   ```
-
-After restoring, the tool will validate that all files were restored correctly and display a summary of the operation.
+- **Cursor-Focused Management**: Specialized handling of `.cursor` directory and related configuration files
+- **Automatic Backup Selection**: When restoring, the tool automatically finds and uses the latest backup
+- **Backup Validation**: Validates that all Cursor configuration files are restored correctly
+- **Branch-Specific Backups**: Create and restore backups for specific Git branches
+- **Dry Run Mode**: Preview operations without making changes
+- **Detailed Progress**: Real-time progress indicators for all operations
+- **Zip Export**: Export configurations as a zip file for easy sharing (coming soon)
+- **Structured Logging**: Comprehensive logging with rotation for better debugging
 
 ## Supported Configurations
 
-- **Cursor Development**
-  - `.cursorrules` - Cursor IDE configuration rules
-  - `.cursorsettings` - Cursor IDE settings
-  - `.cursor/` directory - Additional Cursor configurations and cache
+The tool now exclusively manages Cursor IDE configurations:
 
-- **Windsurf Development**
-  - `.windsurfrules` - Windsurf development rules and configurations
-
-- **VSCode Integration**
-  - `.vscode/` directory - Editor settings and extensions
-
-- **Git Configuration**
-  - `.gitignore` - Repository ignore patterns
-  - `.gitmessage` - Commit message templates
-  - `.gitattributes` - Repository attributes
+- `.cursor/` directory - Contains all Cursor-specific configurations including:
+  - Rules
+  - Settings
+  - Cache
+  - Workspace state
+  - Extensions configuration
 
 ## Configuration
 
-### Global Configuration
-Create or edit `~/.dotfilesrc`:
+The configuration has been simplified to focus on Cursor files. Create or edit `~/.dotfilesrc`:
+
 ```yaml
+# Global Configuration
 search_paths:
   - ~/projects
   - ~/source
@@ -242,14 +183,35 @@ exclude_patterns:
   - .venv
 ```
 
-### Local Configuration
-Create or edit `.dotfilesrc` in your repository:
-```yaml
-programs:
-  cursor:
-    files:
-      - .cursorrules
-      - .cursorsettings
-    directories:
-      - .cursor
+Local configuration (`.dotfilesrc` in your repository) is optional and will be automatically configured for Cursor files.
+
+## Migration Guide
+
+Version 2.0 focuses exclusively on Cursor IDE configurations. If you're upgrading from a previous version:
+
+1. **Configuration Updates**
+   - Previous versions managed multiple program configurations
+   - Now focuses solely on `.cursor` directory and related files
+   - Your existing `.dotfilesrc` will be automatically migrated
+   - Non-Cursor configurations will be ignored
+
+2. **Backup Changes**
+   - Previous backups remain compatible
+   - New backups will only include Cursor-related files
+   - Use `--zip-export` flag to create shareable backups
+
+3. **Command Changes**
+   - All commands now operate only on Cursor files
+   - Added progress indicators for better visibility
+   - Enhanced logging for troubleshooting
+
+4. **Automatic Migration**
+   The tool will automatically:
+   - Detect and migrate old configuration formats
+   - Preserve existing backups
+   - Update to the new cursor-focused structure
+
+For detailed migration assistance, run:
+```bash
+dotfiles doctor --migration-check
 ```
